@@ -1,4 +1,4 @@
-use patricia_tree::PatriciaSet;
+use patricia_tree::{PatriciaMap, PatriciaSet};
 use std::collections::{BTreeSet, HashSet};
 use std::io::BufRead;
 
@@ -25,9 +25,11 @@ fn main() -> noargs::Result<()> {
 
     match kind.as_str() {
         "patricia" => {
-            let mut set = PatriciaSet::new();
+            let mut set = PatriciaMap::new();
+            // let mut set = PatriciaSet::new();
             each_line(|line| {
-                set.insert(line);
+                set.insert(line, rand::random::<u64>());
+                // set.insert(line);
             });
             println!("# LINES: {}", set.len());
         }
