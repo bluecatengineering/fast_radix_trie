@@ -152,12 +152,12 @@ impl<'de, K: crate::Bytes, V: Deserialize<'de>> Deserialize<'de> for KeyAndNode<
             }
             tree_bytes = &tree_bytes[label_len..];
 
-            if flags.contains(Flags::VALUE_INITIALIZED) {
-                let value = values
-                    .pop()
-                    .ok_or_else(|| D::Error::custom("too few values"))?;
-                node.set_value(value);
-            }
+            // if flags.contains(Flags::VALUE_INITIALIZED) {
+            let value = values
+                .pop()
+                .ok_or_else(|| D::Error::custom("too few values"))?;
+            node.set_value(value);
+            // }
 
             stack.push((level, node));
             while let Some((level, node)) = stack.pop() {
