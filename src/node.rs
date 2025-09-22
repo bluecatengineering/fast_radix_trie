@@ -19,14 +19,12 @@ macro_rules! assert_some {
 pub(crate) struct Flags(u8);
 
 impl Flags {
-    pub(crate) const VALUE_ALLOCATED: Flags = Flags(0b0000_0001);
-    pub(crate) const VALUE_INITIALIZED: Flags = Flags(0b0000_0010);
-    pub(crate) const CHILD_ALLOCATED: Flags = Flags(0b0000_0100);
-    pub(crate) const CHILD_INITIALIZED: Flags = Flags(0b0000_1000);
-    pub(crate) const SIBLING_ALLOCATED: Flags = Flags(0b0001_0000);
-    pub(crate) const SIBLING_INITIALIZED: Flags = Flags(0b0010_0000);
+    pub(crate) const CHILD_ALLOCATED: Flags = Flags(0b0000_0001);
+    pub(crate) const CHILD_INITIALIZED: Flags = Flags(0b0000_0010);
+    pub(crate) const SIBLING_ALLOCATED: Flags = Flags(0b0000_0100);
+    pub(crate) const SIBLING_INITIALIZED: Flags = Flags(0b0000_1000);
 
-    const VALID_BITS_MASK: u8 = 0b0011_1111; // Mask of all valid flag bits.
+    const VALID_BITS_MASK: u8 = 0b0000_1111; // Mask of all valid flag bits.
 
     const fn empty() -> Self {
         Flags(0)
@@ -92,8 +90,10 @@ pub struct Node<V> {
 
     _value: PhantomData<V>,
 }
+
 unsafe impl<V: Send> Send for Node<V> {}
 unsafe impl<V: Sync> Sync for Node<V> {}
+
 impl<V> Node<V> {
     /// Makes a new node which represents an empty tree.
     pub fn root() -> Self {
@@ -115,12 +115,11 @@ impl<V> Node<V> {
 
         let mut flags = Flags::empty();
         let mut layout = Self::initial_layout(label.len());
-        let value = value.map(|value| {
-            flags.insert(Flags::VALUE_ALLOCATED | Flags::VALUE_INITIALIZED);
-            let (new_layout, offset) = layout.extend(Layout::new::<V>()).expect("unreachable");
-            layout = new_layout;
-            (value, offset)
-        });
+        let Ok((new_layout, value_offset)) = layout.extend(Layout::new::<Option<V>>()) else {
+            unreachable!();
+        };
+        layout = new_layout;
+
         let child = child.map(|child| {
             flags.insert(Flags::CHILD_ALLOCATED | Flags::CHILD_INITIALIZED);
             let (new_layout, offset) = layout.extend(Layout::new::<Self>()).expect("unreachable");
@@ -144,14 +143,15 @@ impl<V> Node<V> {
             ptr::write(ptr.offset(LABEL_LEN_OFFSET), label.len() as u8);
             ptr::copy_nonoverlapping(label.as_ptr(), ptr.offset(LABEL_OFFSET), label.len());
 
-            if let Some((value, offset)) = value {
-                ptr::write(ptr.add(offset) as _, value);
-            }
+            // let value_ptr = ptr.add(value_offset).cast::<Option<V>>();
+            // value_ptr.write(value);
+            ptr::write(ptr.add(value_offset).cast(), value);
+
             if let Some((child, offset)) = child {
-                ptr::write(ptr.add(offset) as _, child);
+                ptr::write(ptr.add(offset).cast(), child);
             }
             if let Some((sibling, offset)) = sibling {
-                ptr::write(ptr.add(offset) as _, sibling);
+                ptr::write(ptr.add(offset).cast(), sibling);
             }
             Node {
                 ptr,
@@ -164,10 +164,10 @@ impl<V> Node<V> {
     pub(crate) fn new_for_decoding(flags: Flags, label_len: u8) -> Self {
         let mut init_flags = Flags::empty();
         let mut layout = Self::initial_layout(label_len as usize);
-        if flags.contains(Flags::VALUE_INITIALIZED) {
-            init_flags.insert(Flags::VALUE_ALLOCATED);
-            layout = layout.extend(Layout::new::<V>()).expect("unreachable").0;
-        }
+        let Ok((new_layout, _)) = layout.extend(Layout::new::<Option<V>>()) else {
+            unreachable!()
+        };
+        layout = new_layout;
         if flags.contains(Flags::CHILD_INITIALIZED) {
             init_flags.insert(Flags::CHILD_ALLOCATED);
             layout = layout.extend(Layout::new::<Self>()).expect("unreachable").0;
@@ -208,28 +208,14 @@ impl<V> Node<V> {
 
     /// Returns the reference to the value of this node.
     pub fn value(&self) -> Option<&V> {
-        if let Some(offset) = self.value_offset() {
-            if self.flags().contains(Flags::VALUE_INITIALIZED) {
-                unsafe {
-                    let value = self.ptr.offset(offset) as *const V;
-                    return Some(&*value);
-                }
-            }
-        }
-        None
+        let offset = self.value_offset();
+        unsafe { &(*self.ptr.offset(offset).cast::<Option<V>>()) }.as_ref()
     }
 
     /// Returns the mutable reference to the value of this node.
     pub fn value_mut(&mut self) -> Option<&mut V> {
-        if let Some(offset) = self.value_offset() {
-            if self.flags().contains(Flags::VALUE_INITIALIZED) {
-                unsafe {
-                    let value = self.ptr.offset(offset) as *mut V;
-                    return Some(&mut *value);
-                }
-            }
-        }
-        None
+        let offset = self.value_offset();
+        unsafe { &mut (*self.ptr.offset(offset).cast::<Option<V>>()) }.as_mut()
     }
 
     /// Returns the reference to the child of this node.
@@ -288,7 +274,6 @@ impl<V> Node<V> {
     pub fn as_mut(&mut self) -> NodeMut<'_, V> {
         let mut sibling_result = None;
         let mut child_result = None;
-        let mut value_result = None;
 
         if let Some(offset) = self.child_offset() {
             if self.flags().contains(Flags::CHILD_INITIALIZED) {
@@ -308,14 +293,9 @@ impl<V> Node<V> {
             }
         }
 
-        if let Some(offset) = self.value_offset() {
-            if self.flags().contains(Flags::VALUE_INITIALIZED) {
-                unsafe {
-                    let value = self.ptr.offset(offset) as *mut V;
-                    value_result.replace(&mut *value);
-                }
-            }
-        }
+        // let value_result = self.value_mut();
+        let offset = self.value_offset();
+        let value_result = unsafe { &mut (*self.ptr.offset(offset).cast::<Option<V>>()) }.as_mut();
 
         NodeMut {
             label: self.label(),
@@ -327,16 +307,11 @@ impl<V> Node<V> {
 
     /// Takes the value out of this node.
     pub fn take_value(&mut self) -> Option<V> {
-        if let Some(offset) = self.value_offset() {
-            if self.flags().contains(Flags::VALUE_INITIALIZED) {
-                self.set_flags(Flags::VALUE_INITIALIZED, false);
-                unsafe {
-                    let value = self.ptr.offset(offset) as *const V;
-                    return Some(ptr::read(value));
-                }
-            }
+        let offset = self.value_offset();
+        unsafe {
+            let value = self.ptr.offset(offset).cast::<Option<V>>();
+            ptr::replace(value, None)
         }
-        None
     }
 
     /// Takes the child out of this node.
@@ -369,15 +344,11 @@ impl<V> Node<V> {
 
     /// Sets the value of this node.
     pub fn set_value(&mut self, value: V) {
-        self.take_value();
-        if let Some(offset) = self.value_offset() {
-            self.set_flags(Flags::VALUE_INITIALIZED, true);
-            unsafe { ptr::write(self.ptr.offset(offset) as _, value) };
-        } else {
-            let child = self.take_child();
-            let sibling = self.take_sibling();
-            let node = Node::new(self.label(), Some(value), child, sibling);
-            *self = node;
+        // self.take_value();
+        let offset = self.value_offset();
+        unsafe {
+            let ptr = self.ptr.offset(offset).cast::<Option<V>>();
+            let _ = ptr::replace(ptr, Some(value));
         }
     }
 
@@ -702,23 +673,19 @@ impl<V> Node<V> {
     fn label_len(&self) -> usize {
         unsafe { *self.ptr.offset(LABEL_LEN_OFFSET) as usize }
     }
-    fn value_offset(&self) -> Option<isize> {
-        let flags = self.flags();
-        if flags.contains(Flags::VALUE_ALLOCATED) {
-            let layout = Self::initial_layout(self.label_len());
-            let offset = layout.extend(Layout::new::<V>()).expect("unreachable").1;
-            Some(offset as isize)
-        } else {
-            None
-        }
+    fn value_offset(&self) -> isize {
+        let layout = Self::initial_layout(self.label_len());
+        let offset = layout.extend(Layout::new::<V>()).expect("unreachable").1;
+        offset as isize
     }
     fn child_offset(&self) -> Option<isize> {
         let flags = self.flags();
         if flags.contains(Flags::CHILD_ALLOCATED) {
             let mut layout = Self::initial_layout(self.label_len());
-            if flags.contains(Flags::VALUE_ALLOCATED) {
-                layout = layout.extend(Layout::new::<V>()).expect("unreachable").0;
-            }
+            layout = layout
+                .extend(Layout::new::<Option<V>>())
+                .expect("unreachable")
+                .0;
             let offset = layout.extend(Layout::new::<Self>()).expect("unreachable").1;
             Some(offset as isize)
         } else {
@@ -729,9 +696,11 @@ impl<V> Node<V> {
         let flags = self.flags();
         if flags.contains(Flags::SIBLING_ALLOCATED) {
             let mut layout = Self::initial_layout(self.label_len());
-            if flags.contains(Flags::VALUE_ALLOCATED) {
-                layout = layout.extend(Layout::new::<V>()).expect("unreachable").0;
-            }
+
+            layout = layout
+                .extend(Layout::new::<Option<V>>())
+                .expect("unreachable")
+                .0;
             if flags.contains(Flags::CHILD_ALLOCATED) {
                 layout = layout.extend(Layout::new::<Self>()).expect("unreachable").0;
             }
@@ -752,8 +721,8 @@ impl<V> Node<V> {
         *self = parent;
     }
     fn try_reclaim_sibling(&mut self) {
-        let flags = assert_some!(self.sibling()).flags();
-        if flags.intersects(Flags::VALUE_INITIALIZED | Flags::CHILD_INITIALIZED) {
+        let sibling = assert_some!(self.sibling());
+        if sibling.value().is_some() || sibling.flags().contains(Flags::CHILD_INITIALIZED) {
             return;
         }
         if let Some(sibling) = self.take_sibling().and_then(|mut n| n.take_sibling()) {
@@ -761,8 +730,8 @@ impl<V> Node<V> {
         }
     }
     fn try_reclaim_child(&mut self) {
-        let flags = assert_some!(self.child()).flags();
-        if flags.intersects(Flags::VALUE_INITIALIZED | Flags::CHILD_INITIALIZED) {
+        let child = assert_some!(self.child());
+        if child.value().is_some() || child.flags().contains(Flags::CHILD_INITIALIZED) {
             return;
         }
         if let Some(child) = self.take_child().and_then(|mut n| n.take_sibling()) {
@@ -774,9 +743,7 @@ impl<V> Node<V> {
             return;
         }
 
-        if self.flags().contains(Flags::VALUE_INITIALIZED)
-            || !self.flags().contains(Flags::CHILD_INITIALIZED)
-        {
+        if self.value().is_some() || !self.flags().contains(Flags::CHILD_INITIALIZED) {
             return;
         }
 
@@ -810,9 +777,10 @@ impl<V> Drop for Node<V> {
         let _ = self.take_sibling();
 
         let mut layout = Self::initial_layout(self.label_len());
-        if self.flags().contains(Flags::VALUE_ALLOCATED) {
-            layout = layout.extend(Layout::new::<V>()).expect("unreachable").0;
-        }
+        layout = layout
+            .extend(Layout::new::<Option<V>>())
+            .expect("unreachable")
+            .0;
         if self.flags().contains(Flags::CHILD_ALLOCATED) {
             layout = layout.extend(Layout::new::<Self>()).expect("unreachable").0;
         }
