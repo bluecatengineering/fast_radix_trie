@@ -84,7 +84,7 @@ pub struct Node<V> {
     //   - value: Option<V>
     //   - child: Option<Node<V>> -- conditionally allocated
     //   - sibling: Option<Node<V>> -- conditionally allocated
-    pub(crate) ptr: std::ptr::NonNull<NodeHeader>,
+    pub(crate) ptr: ptr::NonNull<NodeHeader>,
     pub(crate) _marker: PhantomData<V>,
 }
 
@@ -875,7 +875,7 @@ impl<V> Iterator for IntoIter<V> {
 mod tests {
     use super::*;
     use crate::{PatriciaSet, StringPatriciaMap};
-    use std::str;
+    use core::str;
 
     #[test]
     fn root_works() {
