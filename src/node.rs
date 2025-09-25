@@ -82,8 +82,8 @@ pub struct Node<V> {
     //   - label_len: u8
     //   - label: [u8; label_len]
     //   - value: Option<V>
-    //   - child: Option<Node<V>>
-    //   - sibling: Option<Node<V>>
+    //   - child: Option<Node<V>> -- conditionally allocated
+    //   - sibling: Option<Node<V>> -- conditionally allocated
     pub(crate) ptr: std::ptr::NonNull<NodeHeader>,
     pub(crate) _marker: PhantomData<V>,
 }
@@ -252,8 +252,9 @@ impl<V> Node<V> {
     /// Takes the value out of this node.
     pub fn take_value(&mut self) -> Option<V> {
         unsafe {
-            let mut ptr = self.ptr_data().value_ptr(self.ptr);
-            ptr.as_mut().take()
+            let ptr = self.ptr_data().value_ptr(self.ptr);
+            ptr.replace(None)
+            // ptr.as_mut().take()
             // ptr.replace(None)
         }
     }
@@ -557,10 +558,13 @@ impl<V> Node<V> {
     }
     pub(crate) fn insert<K: ?Sized + BorrowedBytes>(&mut self, key: &K, value: V) -> Option<V> {
         if key.cmp_first_item(self.label()).is_lt() {
-            let old = mem::replace(self, Node::root());
-            let node = Node::new(key.as_bytes(), Some(value), None, Some(old));
-            *self = node;
-            // mem::forget(node);
+            let this = Node {
+                ptr: self.ptr,
+                _marker: PhantomData,
+            };
+            let node = Node::new(key.as_bytes(), Some(value), None, Some(this));
+            self.ptr = node.ptr;
+            mem::forget(node);
             return None;
         }
 
@@ -908,27 +912,55 @@ mod tests {
     }
 
     #[test]
-    fn ietr_works() {
+    fn new_methods() {
+        let node0 = Node::new("foo".as_ref(), Some(3), None, None);
+        assert_eq!(node0.label(), b"foo");
+        assert_eq!(node0.value(), Some(&3));
+        assert_eq!(node0.child().map(|n| n.label()), None);
+        assert_eq!(node0.sibling().map(|n| n.label()), None);
+
+        let mut node1 = Node::new("bar".as_ref(), None, None, Some(node0));
+        assert_eq!(node1.label(), b"bar");
+        assert_eq!(node1.value(), None);
+        assert_eq!(node1.child().map(|n| n.label()), None);
+        assert_eq!(node1.sibling().map(|n| n.label()), Some(&b"foo"[..]));
+        // take sibling
+        let node0 = node1.take_sibling().unwrap();
+        assert_eq!(node0.label(), b"foo");
+        assert_eq!(node0.value(), Some(&3));
+
+        assert_eq!(node1.sibling().map(|n| n.label()), None);
+
+        // we took sibling out of 0 so should be no cycle
+        let node2 = Node::new("com".as_ref(), Some(1), Some(node1), Some(node0));
+        assert_eq!(node2.label(), b"com");
+        assert_eq!(node2.value(), Some(&1));
+        assert_eq!(node2.child().map(|n| n.label()), Some(&b"bar"[..]));
+        assert_eq!(node2.sibling().map(|n| n.label()), Some(&b"foo"[..]));
+    }
+
+    #[test]
+    fn iter_works() {
         let mut set = PatriciaSet::new();
         set.insert("foo");
         set.insert("bar");
         set.insert("baz");
 
-        // let root = set.into_node();
-        // let nodes = root
-        //     .iter()
-        //     .map(|(level, node)| (level, node.label()))
-        //     .collect::<Vec<_>>();
-        // assert_eq!(
-        //     nodes,
-        //     [
-        //         (0, "".as_ref()),
-        //         (1, "ba".as_ref()),
-        //         (2, "r".as_ref()),
-        //         (2, "z".as_ref()),
-        //         (1, "foo".as_ref())
-        //     ]
-        // );
+        let root = set.into_node();
+        let nodes = root
+            .iter()
+            .map(|(level, node)| (level, node.label()))
+            .collect::<Vec<_>>();
+        assert_eq!(
+            nodes,
+            [
+                (0, "".as_ref()),
+                (1, "ba".as_ref()),
+                (2, "r".as_ref()),
+                (2, "z".as_ref()),
+                (1, "foo".as_ref())
+            ]
+        );
     }
 
     #[test]
