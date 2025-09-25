@@ -4,7 +4,7 @@ use crate::{
     node_header::{NodeHeader, PtrData},
 };
 use alloc::vec::Vec;
-use core::{marker::PhantomData, mem};
+use core::{marker::PhantomData, mem, ptr};
 
 macro_rules! assert_some {
     ($expr:expr) => {
@@ -25,16 +25,19 @@ impl Flags {
     pub(crate) const SIBLING_ALLOCATED: Flags = Flags(0b0000_0100);
     pub(crate) const SIBLING_INITIALIZED: Flags = Flags(0b0000_1000);
 
+    #[allow(unused)]
     const VALID_BITS_MASK: u8 = 0b0000_1111; // Mask of all valid flag bits.
 
     const fn empty() -> Self {
         Flags(0)
     }
 
+    #[allow(unused)]
     pub(crate) const fn from_bits_truncate(bits: u8) -> Self {
         Flags(bits & Self::VALID_BITS_MASK)
     }
 
+    #[allow(unused)]
     pub(crate) const fn bits(self) -> u8 {
         self.0
     }
