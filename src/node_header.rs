@@ -193,6 +193,7 @@ impl<V> PtrData<V> {
         }
     }
 
+    #[allow(unused)]
     #[inline]
     pub unsafe fn label_mut<'a>(header_ptr: NonNull<NodeHeader>) -> &'a mut [u8] {
         unsafe {
