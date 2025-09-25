@@ -23,7 +23,7 @@
 //! assert_eq!(map.get("baz"), Some(&3));
 //! ```
 #![warn(missing_docs)]
-#![expect(clippy::cast_ptr_alignment)]
+// #![expect(clippy::cast_ptr_alignment)]
 #![cfg_attr(not(feature = "std"), no_std)]
 
 #[macro_use]
@@ -41,6 +41,7 @@ pub mod map;
 pub mod set;
 
 mod node;
+mod node_header;
 #[cfg(feature = "serde")]
 mod serialization;
 mod tree;
