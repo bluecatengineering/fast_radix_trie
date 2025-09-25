@@ -257,8 +257,6 @@ impl<V> Node<V> {
         unsafe {
             let ptr = self.ptr_data().value_ptr(self.ptr);
             ptr.replace(None)
-            // ptr.as_mut().take()
-            // ptr.replace(None)
         }
     }
 
@@ -292,32 +290,32 @@ impl<V> Node<V> {
     /// Sets the child of this node.
     pub fn set_child(&mut self, child: Self) {
         self.take_child();
-        unsafe {
-            if let Some(ptr) = self.ptr_data().child_ptr_alloc(self.ptr) {
-                self.set_flags(Flags::CHILD_INITIALIZED, true);
+        if let Some(ptr) = unsafe { self.ptr_data().child_ptr_alloc(self.ptr) } {
+            self.set_flags(Flags::CHILD_INITIALIZED, true);
+            unsafe {
                 ptr.write(child);
-            } else {
-                let value = self.take_value();
-                let sibling = self.take_sibling();
-                let node = Node::new(self.label(), value, Some(child), sibling);
-                *self = node;
             }
+        } else {
+            let value = self.take_value();
+            let sibling = self.take_sibling();
+            let node = Node::new(self.label(), value, Some(child), sibling);
+            *self = node;
         }
     }
 
     /// Sets the sibling of this node.
     pub fn set_sibling(&mut self, sibling: Self) {
         self.take_sibling();
-        unsafe {
-            if let Some(ptr) = self.ptr_data().sibling_ptr_alloc(self.ptr) {
-                self.set_flags(Flags::SIBLING_INITIALIZED, true);
+        if let Some(ptr) = unsafe { self.ptr_data().sibling_ptr_alloc(self.ptr) } {
+            self.set_flags(Flags::SIBLING_INITIALIZED, true);
+            unsafe {
                 ptr.write(sibling);
-            } else {
-                let value = self.take_value();
-                let child = self.take_child();
-                let node = Node::new(self.label(), value, child, Some(sibling));
-                *self = node;
             }
+        } else {
+            let value = self.take_value();
+            let child = self.take_child();
+            let node = Node::new(self.label(), value, child, Some(sibling));
+            *self = node;
         }
     }
 
@@ -604,8 +602,7 @@ impl<V> Node<V> {
         }
     }
     pub(crate) fn flags(&self) -> Flags {
-        self.header().flags
-        // Flags::from_bits_truncate(unsafe { *self.ptr })
+        Flags::from_bits_truncate(self.header().flags.bits())
     }
     fn set_flags(&mut self, other: Flags, value: bool) {
         self.header_mut().flags.set(other, value);
@@ -670,21 +667,7 @@ impl<V> Node<V> {
 
 impl<V> Drop for Node<V> {
     fn drop(&mut self) {
-        // let _ = self.take_value();
-        // let _ = self.take_child();
-        // let _ = self.take_sibling();
-
         self.ptr_data().dealloc(self.ptr);
-        // let mut layout = Self::initial_layout(self.label_len());
-        // layout = extend!(layout.extend(Layout::new::<Option<V>>())).0;
-        // if self.flags().contains(Flags::CHILD_ALLOCATED) {
-        //     layout = extend!(layout.extend(Layout::new::<Self>())).0;
-        // }
-        // if self.flags().contains(Flags::SIBLING_ALLOCATED) {
-        //     layout = extend!(layout.extend(Layout::new::<Self>())).0;
-        // }
-
-        // unsafe { dealloc(self.ptr, layout.pad_to_align()) }
     }
 }
 impl<V: Clone> Clone for Node<V> {

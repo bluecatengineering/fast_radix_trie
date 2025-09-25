@@ -152,6 +152,7 @@ impl<'de, K: crate::Bytes, V: Deserialize<'de>> Deserialize<'de> for KeyAndNode<
             }
             tree_bytes = &tree_bytes[label_len..];
 
+            // TODO: removed when value stopped being optionally allocated
             // if flags.contains(Flags::VALUE_INITIALIZED) {
             let value = values
                 .pop()
