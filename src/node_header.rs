@@ -37,7 +37,7 @@ pub(crate) struct PtrData<V> {
 }
 
 pub(crate) struct NodePtrAndData<V> {
-    pub(crate) ptr: std::ptr::NonNull<NodeHeader>,
+    pub(crate) ptr: ptr::NonNull<NodeHeader>,
     pub(crate) ptr_data: PtrData<V>,
 }
 

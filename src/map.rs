@@ -922,7 +922,7 @@ mod tests {
             .common_prefixes(b"abc")
             .flat_map(|(k, v)| {
                 unsafe {
-                    println!("{:?}", std::str::from_utf8_unchecked(k));
+                    println!("{:?}", core::str::from_utf8_unchecked(k));
                 }
                 v
             })
@@ -971,7 +971,7 @@ mod tests {
         t.insert("🌏🍔", ()); // [240,159,140,143,240,159,141,148]
 
         let first_label = t.as_node().child().unwrap().label();
-        assert!(std::str::from_utf8(first_label).is_err());
+        assert!(core::str::from_utf8(first_label).is_err());
         assert_eq!(first_label, [240, 159, 140, 143, 240, 159]);
 
         // Insert as string.
@@ -980,7 +980,7 @@ mod tests {
         t.insert("🌏🍔", ());
 
         let first_label = t.as_node().child().unwrap().label();
-        assert_eq!(std::str::from_utf8(first_label).ok(), Some("🌏"));
+        assert_eq!(core::str::from_utf8(first_label).ok(), Some("🌏"));
     }
 
     #[test]
