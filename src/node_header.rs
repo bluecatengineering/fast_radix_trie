@@ -19,8 +19,7 @@ macro_rules! extend {
     }};
 }
 
-// const LABEL_OFFSET: isize = core::mem::size_of::<NodeHeader>() as isize;
-const LABEL_OFFSET: isize = 2 as isize;
+const LABEL_OFFSET: isize = core::mem::size_of::<NodeHeader>() as isize;
 
 #[repr(C)]
 #[derive(Clone, Copy, Debug)]
@@ -85,6 +84,10 @@ impl<V> NodePtrAndData<V> {
             )
         }
     }
+
+    // TODO
+    #[allow(unused)]
+    #[inline]
     pub fn into_parts(self) -> (NonNull<NodeHeader>, PtrData<V>) {
         (self.ptr, self.ptr_data)
     }
