@@ -19,7 +19,8 @@ macro_rules! extend {
     }};
 }
 
-const LABEL_OFFSET: isize = core::mem::size_of::<NodeHeader>() as isize;
+// const LABEL_OFFSET: isize = core::mem::size_of::<NodeHeader>() as isize;
+const LABEL_OFFSET: isize = 2 as isize;
 
 #[repr(C)]
 #[derive(Clone, Copy, Debug)]
@@ -42,10 +43,12 @@ pub(crate) struct NodePtrAndData<V> {
 }
 
 impl<V> NodePtrAndData<V> {
+    #[inline]
     pub unsafe fn write_header(&mut self, header: NodeHeader) {
         unsafe { self.ptr.write(header) }
     }
 
+    #[inline]
     pub unsafe fn write_value(&mut self, value: Option<V>) {
         unsafe {
             ptr::write(
@@ -58,17 +61,21 @@ impl<V> NodePtrAndData<V> {
         }
     }
     /// must have flags already set as allocated
+    #[inline]
     pub unsafe fn write_child(&mut self, value: Node<V>) {
         if let Some(offset) = self.ptr_data.child_offset {
             unsafe { ptr::write(self.ptr.byte_add(offset).cast().as_ptr(), value) }
         }
     }
     /// must have flags already set as allocated
+    #[inline]
     pub unsafe fn write_sibling(&mut self, value: Node<V>) {
         if let Some(offset) = self.ptr_data.sibling_offset {
             unsafe { ptr::write(self.ptr.byte_add(offset).cast().as_ptr(), value) }
         }
     }
+
+    #[inline]
     pub unsafe fn write_label(&mut self, label: &[u8]) {
         unsafe {
             ptr::copy_nonoverlapping(
@@ -81,6 +88,8 @@ impl<V> NodePtrAndData<V> {
     pub fn into_parts(self) -> (NonNull<NodeHeader>, PtrData<V>) {
         (self.ptr, self.ptr_data)
     }
+
+    #[inline]
     pub unsafe fn assume_init(self) -> Node<V> {
         Node {
             ptr: self.ptr,
@@ -101,19 +110,20 @@ impl NodeHeader {
         ))
     }
 
+    #[inline]
     pub fn ptr_data<V>(&self) -> PtrData<V> {
         let layout = Self::initial_layout(self.label_len as usize);
         let (mut layout, value_offset) = extend!(layout.extend(Layout::new::<Option<V>>()));
 
         let child_offset = if self.flags.contains(Flags::CHILD_ALLOCATED) {
-            let (new_layout, offset) = extend!(layout.extend(Layout::new::<Self>()));
+            let (new_layout, offset) = extend!(layout.extend(Layout::new::<Node<V>>()));
             layout = new_layout;
             Some(offset)
         } else {
             None
         };
         let sibling_offset = if self.flags.contains(Flags::SIBLING_ALLOCATED) {
-            let (new_layout, offset) = extend!(layout.extend(Layout::new::<Self>()));
+            let (new_layout, offset) = extend!(layout.extend(Layout::new::<Node<V>>()));
             layout = new_layout;
             Some(offset)
         } else {
@@ -130,6 +140,7 @@ impl NodeHeader {
 }
 
 impl<V> PtrData<V> {
+    #[inline]
     pub fn allocate(self) -> NodePtrAndData<V> {
         unsafe {
             let ptr = alloc::alloc(self.layout) as *mut NodeHeader;
@@ -144,6 +155,7 @@ impl<V> PtrData<V> {
         }
     }
 
+    #[inline]
     pub fn dealloc(self, header_ptr: NonNull<NodeHeader>) {
         let layout = self.layout;
 
@@ -166,6 +178,8 @@ impl<V> PtrData<V> {
             alloc::dealloc(header_ptr.as_ptr().cast(), layout);
         }
     }
+
+    #[inline]
     pub unsafe fn label<'a>(header_ptr: NonNull<NodeHeader>) -> &'a [u8] {
         unsafe {
             let label_len = (*header_ptr.as_ptr()).label_len as usize;
@@ -175,6 +189,8 @@ impl<V> PtrData<V> {
             )
         }
     }
+
+    #[inline]
     pub unsafe fn label_mut<'a>(header_ptr: NonNull<NodeHeader>) -> &'a mut [u8] {
         unsafe {
             let label_len = (*header_ptr.as_ptr()).label_len as usize;
@@ -184,6 +200,7 @@ impl<V> PtrData<V> {
             )
         }
     }
+    #[inline]
     pub unsafe fn value_ptr(&self, header_ptr: NonNull<NodeHeader>) -> NonNull<Option<V>> {
         let offset = self.value_offset;
         unsafe { header_ptr.byte_offset(offset as isize).cast::<Option<V>>() }
