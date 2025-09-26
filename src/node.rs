@@ -139,22 +139,28 @@ impl<V> Node<V> {
     }
 
     #[cfg(feature = "serde")]
-    pub(crate) fn new_for_decoding(flags: Flags, label_len: u8) -> Self {
-        let mut flags = Flags::from_bits_truncate(flags.bits());
+    /// unsafe because flags effects the layout. contract must
+    /// be upheld between flags and child/sibling
+    pub(crate) unsafe fn new_for_decoding(flags: Flags, label_len: u8) -> Self {
         // If the decoded flags say a child/sibling was initialized,
         // we must set the ALLOCATED flag as well for the layout to be correct
+        let mut init_flags = Flags::empty();
         if flags.contains(Flags::CHILD_INITIALIZED) {
-            flags.insert(Flags::CHILD_ALLOCATED);
+            init_flags.insert(Flags::CHILD_ALLOCATED);
         }
         if flags.contains(Flags::SIBLING_INITIALIZED) {
-            flags.insert(Flags::SIBLING_ALLOCATED);
+            init_flags.insert(Flags::SIBLING_ALLOCATED);
         }
 
-        let header = NodeHeader { flags, label_len };
+        let header = NodeHeader {
+            flags: init_flags,
+            label_len,
+        };
         let mut ptr = header.ptr_data().allocate();
-
         unsafe {
             ptr.write_header(header);
+            ptr.write_value(None::<V>);
+
             ptr.assume_init()
         }
     }

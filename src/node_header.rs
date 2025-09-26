@@ -166,9 +166,8 @@ impl<V> PtrData<V> {
         unsafe {
             let value_ptr = self.value_ptr(header_ptr);
             let _ = value_ptr.read();
-            // could use ptr::read also
             // drop_in_place tears down the value, but if value
-            // was a ptr, we would need to use ptr::read to drop
+            // was a ptr (like the child/sibling), we would need to use ptr::read to drop
             // ptr::drop_in_place(value_ptr.as_ptr());
             if let Some(sibling_ptr) = self.sibling_ptr_init(header_ptr) {
                 let _ = sibling_ptr.read();
