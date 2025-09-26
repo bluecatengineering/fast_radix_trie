@@ -64,10 +64,7 @@ impl<T: Serialize> Serialize for Node<T> {
             tree_bytes.push((level >> 8) as u8);
             tree_bytes.push(level as u8);
             tree_bytes.extend(node.label());
-            // if let Some(v) = node.value() {
-            //     values.push(v);
-            // }
-            // value is always present now
+            // value is always present
             values.push(node.value());
 
             if let Some(sibling) = node.sibling() {
