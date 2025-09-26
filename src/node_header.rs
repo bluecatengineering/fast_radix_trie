@@ -26,10 +26,12 @@ const LABEL_OFFSET: isize = core::mem::size_of::<NodeHeader>() as isize;
 pub(crate) struct NodeHeader {
     pub(crate) flags: Flags,
     pub(crate) label_len: u8,
+    // pub(crate) children_len: u8,
 }
 
 pub(crate) struct PtrData<V> {
     pub(crate) layout: Layout,
+    // pub(crate) children_offset: Option<usize>,
     pub(crate) value_offset: usize,
     pub(crate) child_offset: Option<usize>,
     pub(crate) sibling_offset: Option<usize>,
@@ -43,12 +45,12 @@ pub(crate) struct NodePtrAndData<V> {
 
 impl<V> NodePtrAndData<V> {
     #[inline]
-    pub unsafe fn write_header(&mut self, header: NodeHeader) {
+    pub(crate) unsafe fn write_header(&mut self, header: NodeHeader) {
         unsafe { self.ptr.write(header) }
     }
 
     #[inline]
-    pub unsafe fn write_value(&mut self, value: Option<V>) {
+    pub(crate) unsafe fn write_value(&mut self, value: Option<V>) {
         unsafe {
             ptr::write(
                 self.ptr
@@ -61,21 +63,21 @@ impl<V> NodePtrAndData<V> {
     }
     /// must have flags already set as allocated
     #[inline]
-    pub unsafe fn write_child(&mut self, value: Node<V>) {
+    pub(crate) unsafe fn write_child(&mut self, value: Node<V>) {
         if let Some(offset) = self.ptr_data.child_offset {
             unsafe { ptr::write(self.ptr.byte_add(offset).cast().as_ptr(), value) }
         }
     }
     /// must have flags already set as allocated
     #[inline]
-    pub unsafe fn write_sibling(&mut self, value: Node<V>) {
+    pub(crate) unsafe fn write_sibling(&mut self, value: Node<V>) {
         if let Some(offset) = self.ptr_data.sibling_offset {
             unsafe { ptr::write(self.ptr.byte_add(offset).cast().as_ptr(), value) }
         }
     }
 
     #[inline]
-    pub unsafe fn write_label(&mut self, label: &[u8]) {
+    pub(crate) unsafe fn write_label(&mut self, label: &[u8]) {
         unsafe {
             ptr::copy_nonoverlapping(
                 label.as_ptr(),
@@ -88,12 +90,12 @@ impl<V> NodePtrAndData<V> {
     // TODO
     #[allow(unused)]
     #[inline]
-    pub fn into_parts(self) -> (NonNull<NodeHeader>, PtrData<V>) {
+    pub(crate) fn into_parts(self) -> (NonNull<NodeHeader>, PtrData<V>) {
         (self.ptr, self.ptr_data)
     }
 
     #[inline]
-    pub unsafe fn assume_init(self) -> Node<V> {
+    pub(crate) unsafe fn assume_init(self) -> Node<V> {
         Node {
             ptr: self.ptr,
             _marker: PhantomData,
@@ -106,12 +108,13 @@ impl NodeHeader {
     fn initial_layout(label_len: usize) -> Layout {
         extend!(Layout::from_size_align(
             LABEL_OFFSET as usize + label_len,
-            1
+            // alignment is size of max element (should be 1)
+            core::mem::align_of::<NodeHeader>()
         ))
     }
 
     #[inline]
-    pub fn ptr_data<V>(&self) -> PtrData<V> {
+    pub(crate) fn ptr_data<V>(&self) -> PtrData<V> {
         let layout = Self::initial_layout(self.label_len as usize);
         let (mut layout, value_offset) = extend!(layout.extend(Layout::new::<Option<V>>()));
 
@@ -141,7 +144,7 @@ impl NodeHeader {
 
 impl<V> PtrData<V> {
     #[inline]
-    pub fn allocate(self) -> NodePtrAndData<V> {
+    pub(crate) fn allocate(self) -> NodePtrAndData<V> {
         unsafe {
             let ptr = alloc::alloc(self.layout) as *mut NodeHeader;
             let Some(ptr) = NonNull::new(ptr) else {
@@ -156,7 +159,7 @@ impl<V> PtrData<V> {
     }
 
     #[inline]
-    pub fn dealloc(self, header_ptr: NonNull<NodeHeader>) {
+    pub(crate) fn dealloc(self, header_ptr: NonNull<NodeHeader>) {
         // drop
         unsafe {
             let value_ptr = self.value_ptr(header_ptr);
@@ -173,7 +176,7 @@ impl<V> PtrData<V> {
     }
 
     #[inline]
-    pub unsafe fn label<'a>(header_ptr: NonNull<NodeHeader>) -> &'a [u8] {
+    pub(crate) unsafe fn label<'a>(header_ptr: NonNull<NodeHeader>) -> &'a [u8] {
         unsafe {
             let label_len = (*header_ptr.as_ptr()).label_len as usize;
             slice::from_raw_parts(
@@ -185,7 +188,7 @@ impl<V> PtrData<V> {
 
     #[allow(unused)]
     #[inline]
-    pub unsafe fn label_mut<'a>(header_ptr: NonNull<NodeHeader>) -> &'a mut [u8] {
+    pub(crate) unsafe fn label_mut<'a>(header_ptr: NonNull<NodeHeader>) -> &'a mut [u8] {
         unsafe {
             let label_len = (*header_ptr.as_ptr()).label_len as usize;
             slice::from_raw_parts_mut(
@@ -195,13 +198,13 @@ impl<V> PtrData<V> {
         }
     }
     #[inline]
-    pub unsafe fn value_ptr(&self, header_ptr: NonNull<NodeHeader>) -> NonNull<Option<V>> {
+    pub(crate) unsafe fn value_ptr(&self, header_ptr: NonNull<NodeHeader>) -> NonNull<Option<V>> {
         let offset = self.value_offset;
         unsafe { header_ptr.byte_offset(offset as isize).cast::<Option<V>>() }
     }
 
     #[inline]
-    pub unsafe fn child_ptr_init(
+    pub(crate) unsafe fn child_ptr_init(
         &self,
         header_ptr: NonNull<NodeHeader>,
     ) -> Option<NonNull<Node<V>>> {
@@ -209,7 +212,7 @@ impl<V> PtrData<V> {
     }
 
     #[inline]
-    pub unsafe fn child_ptr_alloc(
+    pub(crate) unsafe fn child_ptr_alloc(
         &self,
         header_ptr: NonNull<NodeHeader>,
     ) -> Option<NonNull<Node<V>>> {
@@ -232,7 +235,7 @@ impl<V> PtrData<V> {
     }
 
     #[inline]
-    pub unsafe fn sibling_ptr_init(
+    pub(crate) unsafe fn sibling_ptr_init(
         &self,
         header_ptr: NonNull<NodeHeader>,
     ) -> Option<NonNull<Node<V>>> {
@@ -240,7 +243,10 @@ impl<V> PtrData<V> {
     }
 
     #[inline]
-    pub unsafe fn take_sibling(&self, mut header_ptr: NonNull<NodeHeader>) -> Option<Node<V>> {
+    pub(crate) unsafe fn take_sibling(
+        &self,
+        mut header_ptr: NonNull<NodeHeader>,
+    ) -> Option<Node<V>> {
         unsafe {
             if let Some(ptr) = self.sibling_ptr(header_ptr, Flags::SIBLING_INITIALIZED) {
                 header_ptr
@@ -255,7 +261,7 @@ impl<V> PtrData<V> {
     }
 
     #[inline]
-    pub unsafe fn take_child(&self, mut header_ptr: NonNull<NodeHeader>) -> Option<Node<V>> {
+    pub(crate) unsafe fn take_child(&self, mut header_ptr: NonNull<NodeHeader>) -> Option<Node<V>> {
         unsafe {
             if let Some(ptr) = self.child_ptr(header_ptr, Flags::CHILD_INITIALIZED) {
                 header_ptr
@@ -270,7 +276,7 @@ impl<V> PtrData<V> {
     }
 
     #[inline]
-    pub unsafe fn sibling_ptr_alloc(
+    pub(crate) unsafe fn sibling_ptr_alloc(
         &self,
         header_ptr: NonNull<NodeHeader>,
     ) -> Option<NonNull<Node<V>>> {
