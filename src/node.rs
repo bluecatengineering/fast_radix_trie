@@ -51,11 +51,11 @@ impl Flags {
         (self.0 & other.0) != 0
     }
 
-    fn insert(&mut self, other: Flags) {
+    pub(crate) fn insert(&mut self, other: Flags) {
         self.0 |= other.0;
     }
 
-    fn set(&mut self, other: Flags, value: bool) {
+    pub(crate) fn set(&mut self, other: Flags, value: bool) {
         if value {
             self.0 |= other.0;
         } else {
@@ -139,7 +139,7 @@ impl<V> Node<V> {
     }
 
     #[cfg(feature = "serde")]
-    /// unsafe because flags effects the layout. contract must
+    /// unsafe because flags/label_len effects the layout. contract must
     /// be upheld between flags and child/sibling
     pub(crate) unsafe fn new_for_decoding(flags: Flags, label_len: u8) -> Self {
         // If the decoded flags say a child/sibling was initialized,
@@ -268,20 +268,12 @@ impl<V> Node<V> {
 
     /// Takes the child out of this node.
     pub fn take_child(&mut self) -> Option<Self> {
-        if let Some(child) = unsafe { self.ptr_data().child_ptr_init(self.ptr) } {
-            self.set_flags(Flags::CHILD_INITIALIZED, false);
-            return Some(unsafe { child.read() });
-        }
-        None
+        unsafe { self.ptr_data().take_child(self.ptr) }
     }
 
     /// Takes the sibling out of this node.
     pub fn take_sibling(&mut self) -> Option<Self> {
-        if let Some(sibling) = unsafe { self.ptr_data().sibling_ptr_init(self.ptr) } {
-            self.set_flags(Flags::SIBLING_INITIALIZED, false);
-            return Some(unsafe { sibling.read() });
-        }
-        None
+        unsafe { self.ptr_data().take_sibling(self.ptr) }
     }
 
     /// Sets the value of this node.
