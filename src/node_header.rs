@@ -160,8 +160,6 @@ impl<V> PtrData<V> {
 
     #[inline]
     pub fn dealloc(self, header_ptr: NonNull<NodeHeader>) {
-        let layout = self.layout;
-
         // drop
         unsafe {
             let value_ptr = self.value_ptr(header_ptr);
@@ -169,14 +167,10 @@ impl<V> PtrData<V> {
             // drop_in_place tears down the value, but if value
             // was a ptr (like the child/sibling), we would need to use ptr::read to drop
             // ptr::drop_in_place(value_ptr.as_ptr());
-            if let Some(sibling_ptr) = self.sibling_ptr_init(header_ptr) {
-                let _ = sibling_ptr.read();
-            }
-            if let Some(child_ptr) = self.child_ptr_init(header_ptr) {
-                let _ = child_ptr.read();
-            }
-        }
-        unsafe {
+            let _ = self.take_sibling(header_ptr);
+            let _ = self.take_child(header_ptr);
+
+            let layout = self.layout;
             alloc::dealloc(header_ptr.as_ptr().cast(), layout);
         }
     }
@@ -249,12 +243,43 @@ impl<V> PtrData<V> {
     }
 
     #[inline]
+    pub unsafe fn take_sibling(&self, mut header_ptr: NonNull<NodeHeader>) -> Option<Node<V>> {
+        unsafe {
+            if let Some(ptr) = self.sibling_ptr(header_ptr, Flags::SIBLING_INITIALIZED) {
+                header_ptr
+                    .as_mut()
+                    .flags
+                    .set(Flags::SIBLING_INITIALIZED, false);
+                Some(ptr.read())
+            } else {
+                None
+            }
+        }
+    }
+
+    #[inline]
+    pub unsafe fn take_child(&self, mut header_ptr: NonNull<NodeHeader>) -> Option<Node<V>> {
+        unsafe {
+            if let Some(ptr) = self.child_ptr(header_ptr, Flags::CHILD_INITIALIZED) {
+                header_ptr
+                    .as_mut()
+                    .flags
+                    .set(Flags::CHILD_INITIALIZED, false);
+                Some(ptr.read())
+            } else {
+                None
+            }
+        }
+    }
+
+    #[inline]
     pub unsafe fn sibling_ptr_alloc(
         &self,
         header_ptr: NonNull<NodeHeader>,
     ) -> Option<NonNull<Node<V>>> {
         unsafe { self.sibling_ptr(header_ptr, Flags::SIBLING_ALLOCATED) }
     }
+
     #[inline]
     unsafe fn sibling_ptr(
         &self,
