@@ -364,7 +364,7 @@ impl<K: Bytes, V> GenericPatriciaMap<K, V> {
     ///     .flatten()
     ///     .eq(vec![&"a", &"b", &"c", &"d"].into_iter()));
     /// ```
-    pub fn common_prefix_values_owned(&self, key: K) -> impl Iterator<Item = &V> + use<'_, K, V>
+    pub fn common_prefix_values_owned(&self, key: K) -> impl Iterator<Item = &V>
     where
         K: AsRef<K::Borrowed>,
     {
