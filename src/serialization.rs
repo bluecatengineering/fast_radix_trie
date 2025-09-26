@@ -1,11 +1,16 @@
-use crate::node::{Flags, Node};
-use crate::{BorrowedBytes, GenericPatriciaMap, GenericPatriciaSet};
-use alloc::borrow::{Cow, ToOwned};
-use alloc::vec::Vec;
-use core::borrow::Borrow;
-use core::marker::PhantomData;
-use serde::de::{Error, Visitor};
-use serde::{Deserialize, Deserializer, Serialize, Serializer};
+use crate::{
+    BorrowedBytes, GenericPatriciaMap, GenericPatriciaSet,
+    node::{Flags, Node},
+};
+use alloc::{
+    borrow::{Cow, ToOwned},
+    vec::Vec,
+};
+use core::{borrow::Borrow, marker::PhantomData};
+use serde::{
+    Deserialize, Deserializer, Serialize, Serializer,
+    de::{Error, Visitor},
+};
 
 impl<T> Serialize for GenericPatriciaSet<T> {
     /// In order to serialize a [PatriciaSet], make sure you installed the crate
@@ -59,9 +64,9 @@ impl<T: Serialize> Serialize for Node<T> {
             tree_bytes.push((level >> 8) as u8);
             tree_bytes.push(level as u8);
             tree_bytes.extend(node.label());
-            if let Some(value) = node.value() {
-                values.push(value);
-            }
+            // value is always present
+            values.push(node.value());
+
             if let Some(sibling) = node.sibling() {
                 stack.push((level, sibling));
             }
@@ -124,7 +129,7 @@ impl<'de, K: crate::Bytes, V: Deserialize<'de>> Deserialize<'de> for KeyAndNode<
     where
         D: Deserializer<'de>,
     {
-        let (tree_bytes, mut values): (Bytes<'de>, Vec<V>) =
+        let (tree_bytes, mut values): (Bytes<'de>, Vec<Option<V>>) =
             Deserialize::deserialize(deserializer)?;
         values.reverse();
         let mut tree_bytes = tree_bytes.0.as_ref();
@@ -142,7 +147,7 @@ impl<'de, K: crate::Bytes, V: Deserialize<'de>> Deserialize<'de> for KeyAndNode<
             if tree_bytes.len() < label_len {
                 return Err(D::Error::custom("unexpected EOS"));
             }
-            let mut node = Node::<V>::new_for_decoding(flags, label_len as u8);
+            let mut node = unsafe { Node::<V>::new_for_decoding(flags, label_len as u8) };
             node.label_mut().copy_from_slice(&tree_bytes[..label_len]);
             if !K::Borrowed::is_valid_bytes(node.label()) {
                 return Err(D::Error::custom(format!(
@@ -152,11 +157,12 @@ impl<'de, K: crate::Bytes, V: Deserialize<'de>> Deserialize<'de> for KeyAndNode<
             }
             tree_bytes = &tree_bytes[label_len..];
 
-            if flags.contains(Flags::VALUE_INITIALIZED) {
-                let value = values
-                    .pop()
-                    .ok_or_else(|| D::Error::custom("too few values"))?;
-                node.set_value(value);
+            // value is always present now
+            let value = values
+                .pop()
+                .ok_or_else(|| D::Error::custom("too few values"))?;
+            if let Some(v) = value {
+                node.set_value(v);
             }
 
             stack.push((level, node));
