@@ -101,9 +101,6 @@ impl<V> NodePtrAndData<V> {
     }
 }
 
-unsafe impl<V: Send> Send for Node<V> {}
-unsafe impl<V: Sync> Sync for Node<V> {}
-
 impl NodeHeader {
     #[inline]
     fn initial_layout(label_len: usize) -> Layout {

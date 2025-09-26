@@ -91,6 +91,9 @@ pub struct Node<V> {
     pub(crate) _marker: PhantomData<V>,
 }
 
+unsafe impl<V: Send> Send for Node<V> {}
+unsafe impl<V: Sync> Sync for Node<V> {}
+
 impl<V> Node<V> {
     /// Makes a new node which represents an empty tree.
     pub fn root() -> Self {
