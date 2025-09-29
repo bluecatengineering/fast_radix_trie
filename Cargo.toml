@@ -24,7 +24,6 @@ serde_json = { version = "1" }
 [features]
 default = ["std"]
 std = []
-serde = ["dep:serde"]
 
 [package.metadata.docs.rs]
 all-features = true

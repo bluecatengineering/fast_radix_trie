@@ -41,8 +41,6 @@ pub mod set;
 
 mod node;
 mod node_header;
-#[cfg(feature = "serde")]
-mod serialization;
 mod tree;
 
 /// This trait represents a bytes type that can be used as the key type of patricia trees.

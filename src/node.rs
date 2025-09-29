@@ -1,10 +1,14 @@
 //! A node which represents a subtree of a patricia tree.
 use crate::{
     BorrowedBytes, Bytes,
-    node_header::{NodeHeader, PtrData},
+    node_header::{NodeHeader, NodePtrAndData, PtrData},
 };
 use alloc::vec::Vec;
-use core::{marker::PhantomData, mem, ptr};
+use core::{
+    marker::PhantomData,
+    mem,
+    ptr::{self, NonNull},
+};
 
 macro_rules! assert_some {
     ($expr:expr) => {
@@ -72,7 +76,7 @@ impl core::ops::BitOr for Flags {
     }
 }
 
-const MAX_LABEL_LEN: usize = 255;
+const MAX_LABEL_LEN: usize = u8::MAX as usize;
 
 /// A node which represents a subtree of a patricia tree.
 ///
@@ -97,73 +101,51 @@ unsafe impl<V: Sync> Sync for Node<V> {}
 impl<V> Node<V> {
     /// Makes a new node which represents an empty tree.
     pub fn root() -> Self {
-        Node::new(b"", None, None, None)
+        Node::new(b"", [], None)
     }
 
     /// Makes a new node.
-    pub fn new(
-        mut label: &[u8],
-        mut value: Option<V>,
-        mut child: Option<Self>,
-        sibling: Option<Self>,
-    ) -> Self {
-        if label.len() > MAX_LABEL_LEN {
-            child = Some(Node::new(&label[MAX_LABEL_LEN..], value, child, None));
-            label = &label[..MAX_LABEL_LEN];
-            value = None;
+    /// SAFETY: - label len must not exceed 255
+    ///         - children len must not exceed 255
+    pub fn new<const N: usize>(label: &[u8], children: [Node<V>; N], value: Option<V>) -> Self {
+        // known at compile time
+        if N > u8::MAX as usize {
+            panic!("children_len {} exceeds the max {}", N, u8::MAX);
         }
+        assert!(
+            label.len() <= MAX_LABEL_LEN,
+            "nodes must have a label len <= 255"
+        );
+        // if label.len() > MAX_LABEL_LEN {
+        //     child = Some(Node::new(&label[MAX_LABEL_LEN..], value, child, None));
+        //     label = &label[..MAX_LABEL_LEN];
+        //     value = None;
+        // }
 
-        let mut flags = Flags::empty();
-        if child.is_some() {
-            flags.insert(Flags::CHILD_ALLOCATED | Flags::CHILD_INITIALIZED);
-        }
-        if sibling.is_some() {
-            flags.insert(Flags::SIBLING_ALLOCATED | Flags::SIBLING_INITIALIZED);
-        }
+        // let mut flags = Flags::empty();
+        // if child.is_some() {
+        //     flags.insert(Flags::CHILD_ALLOCATED | Flags::CHILD_INITIALIZED);
+        // }
+        // if sibling.is_some() {
+        //     flags.insert(Flags::SIBLING_ALLOCATED | Flags::SIBLING_INITIALIZED);
+        // }
 
         let header = NodeHeader {
-            flags,
             label_len: label.len() as u8,
+            children_len: children.len() as u8,
         };
         let mut ptr = header.ptr_data().allocate();
         unsafe {
             ptr.write_header(header);
-
             ptr.write_label(label);
+            ptr.write_children(children);
             ptr.write_value(value);
-            if let Some(child) = child {
-                ptr.write_child(child);
-            }
-            if let Some(sibling) = sibling {
-                ptr.write_sibling(sibling);
-            }
-            ptr.assume_init()
-        }
-    }
-
-    #[cfg(feature = "serde")]
-    /// unsafe because flags/label_len effects the layout. contract must
-    /// be upheld between flags and child/sibling
-    pub(crate) unsafe fn new_for_decoding(flags: Flags, label_len: u8) -> Self {
-        // If the decoded flags say a child/sibling was initialized,
-        // we must set the ALLOCATED flag as well for the layout to be correct
-        let mut init_flags = Flags::empty();
-        if flags.contains(Flags::CHILD_INITIALIZED) {
-            init_flags.insert(Flags::CHILD_ALLOCATED);
-        }
-        if flags.contains(Flags::SIBLING_INITIALIZED) {
-            init_flags.insert(Flags::SIBLING_ALLOCATED);
-        }
-
-        let header = NodeHeader {
-            flags: init_flags,
-            label_len,
-        };
-        let mut ptr = header.ptr_data().allocate();
-        unsafe {
-            ptr.write_header(header);
-            ptr.write_value(None::<V>);
-
+            // if let Some(child) = child {
+            //     ptr.write_child(child);
+            // }
+            // if let Some(sibling) = sibling {
+            //     ptr.write_sibling(sibling);
+            // }
             ptr.assume_init()
         }
     }
@@ -204,60 +186,19 @@ impl<V> Node<V> {
         unsafe { (self.ptr_data().value_ptr(self.ptr)).as_mut() }.as_mut()
     }
 
-    /// Returns the reference to the child of this node.
-    pub fn child(&self) -> Option<&Self> {
-        if let Some(child) = unsafe { self.ptr_data().child_ptr_init(self.ptr) } {
-            return Some(unsafe { child.as_ref() });
-        }
-        None
-    }
-
-    /// Returns the mutable reference to the child of this node.
-    pub fn child_mut(&mut self) -> Option<&mut Self> {
-        if let Some(mut child) = unsafe { self.ptr_data().child_ptr_init(self.ptr) } {
-            return Some(unsafe { child.as_mut() });
-        }
-        None
-    }
-
-    /// Returns the reference to the sibling of this node.
-    pub fn sibling(&self) -> Option<&Self> {
-        if let Some(sibling) = unsafe { self.ptr_data().sibling_ptr_init(self.ptr) } {
-            return Some(unsafe { sibling.as_ref() });
-        }
-        None
-    }
-
-    /// Returns the mutable reference to the sibling of this node.
-    pub fn sibling_mut(&mut self) -> Option<&mut Self> {
-        if let Some(mut sibling) = unsafe { self.ptr_data().sibling_ptr_init(self.ptr) } {
-            return Some(unsafe { sibling.as_mut() });
-        }
-        None
+    pub fn children(&self) -> &[Node<V>] {
+        unsafe { self.ptr_data().children(self.ptr) }
     }
 
     /// Returns mutable references to the node itself with its sibling and child
     pub fn as_mut(&mut self) -> NodeMut<'_, V> {
-        let child_result =
-            if let Some(mut child) = unsafe { self.ptr_data().child_ptr_init(self.ptr) } {
-                Some(unsafe { child.as_mut() })
-            } else {
-                None
-            };
-        let sibling_result =
-            if let Some(mut sibling) = unsafe { self.ptr_data().sibling_ptr_init(self.ptr) } {
-                Some(unsafe { sibling.as_mut() })
-            } else {
-                None
-            };
-
-        let value_result = unsafe { self.ptr_data().value_ptr(self.ptr).as_mut() }.as_mut();
+        let value = unsafe { self.ptr_data().value_ptr(self.ptr).as_mut() }.as_mut();
+        let children = unsafe { self.ptr_data().children_mut(self.ptr) };
 
         NodeMut {
             label: self.label(),
-            sibling: sibling_result,
-            child: child_result,
-            value: value_result,
+            value,
+            children,
         }
     }
 
@@ -269,15 +210,88 @@ impl<V> Node<V> {
         }
     }
 
-    /// Takes the child out of this node.
-    pub fn take_child(&mut self) -> Option<Self> {
-        unsafe { self.ptr_data().take_child(self.ptr) }
+    pub fn take_children(&mut self) -> Option<Vec<Node<V>>> {
+        let len = self.children_len();
+        if len == 0 {
+            return None;
+        }
+        let mut ret = Vec::with_capacity(len);
+        unsafe {
+            let ptr = self.ptr_data().children_ptr(self.ptr)?;
+            for i in 0..len {
+                ret.push(ptr.add(i).read());
+            }
+            // reallocate parent now that children are gone
+            let value = self.take_value();
+            let node = Node::new(self.label(), [], value);
+            *self = node;
+        }
+        Some(ret)
+    }
+    pub fn children_len(&self) -> usize {
+        self.header().children_len as usize
+    }
+    /// adds child at i and shifts elements left
+    /// node must have children already
+    unsafe fn add_child(&mut self, new_child: Node<V>, i: usize) {
+        debug_assert!(
+            i <= self.children_len() as usize,
+            "child index out of bounds: {i} > {}",
+            self.children_len()
+        );
+
+        let new_header = NodeHeader {
+            label_len: self.label_len() as u8,
+            children_len: self.children_len() as u8 + 1,
+        };
+        let old_children_len = self.children_len();
+        let new_ptr_data = new_header.ptr_data();
+        let old_layout = self.ptr_data().layout;
+        // TODO: could use ptr::copy since we use realloc
+        let value = self.take_value();
+
+        unsafe {
+            let new_ptr = alloc::alloc::realloc(
+                self.ptr.as_ptr().cast(),
+                old_layout,
+                new_ptr_data.layout.size(),
+            )
+            .cast();
+            let Some(new_ptr) = NonNull::new(new_ptr) else {
+                alloc::alloc::handle_alloc_error(new_ptr_data.layout);
+            };
+            let mut new_ptr = NodePtrAndData {
+                ptr: new_ptr,
+                ptr_data: new_ptr_data,
+            };
+            // write data in left to right order
+            // new_ptr.value_ptr().copy_from(value_ptr, 1);
+            new_ptr.write_value(value);
+            // shift children from [i..] to [i+1..]
+            let num = old_children_len - i;
+            assert_some!(new_ptr.children_ptr())
+                .add(i)
+                .copy_to(assert_some!(new_ptr.children_ptr()).add(i + 1), num);
+            // write child at i
+            assert_some!(new_ptr.children_ptr()).add(i).write(new_child);
+            // everything before this has been moved by realloc
+            // that means [..i] children and label and header
+            // update header value:
+            new_ptr.write_header(new_header);
+            // label already there from realloc
+            *self = new_ptr.assume_init();
+        }
     }
 
-    /// Takes the sibling out of this node.
-    pub fn take_sibling(&mut self) -> Option<Self> {
-        unsafe { self.ptr_data().take_sibling(self.ptr) }
-    }
+    // /// Takes the child out of this node.
+    // pub fn take_child(&mut self) -> Option<Self> {
+    //     unsafe { self.ptr_data().take_child(self.ptr) }
+    // }
+
+    // /// Takes the sibling out of this node.
+    // pub fn take_sibling(&mut self) -> Option<Self> {
+    //     unsafe { self.ptr_data().take_sibling(self.ptr) }
+    // }
 
     /// Sets the value of this node.
     pub fn set_value(&mut self, value: V) {
@@ -299,8 +313,9 @@ impl<V> Node<V> {
         } else {
             let value = self.take_value();
             let sibling = self.take_sibling();
-            let node = Node::new(self.label(), value, Some(child), sibling);
-            *self = node;
+            // let node = Node::new(self.label(), value, Some(child), sibling);
+            // *self = node;
+            todo!();
         }
     }
 
@@ -315,8 +330,9 @@ impl<V> Node<V> {
         } else {
             let value = self.take_value();
             let child = self.take_child();
-            let node = Node::new(self.label(), value, child, Some(sibling));
-            *self = node;
+            // let node = Node::new(self.label(), value, child, Some(sibling));
+            // *self = node;
+            todo!();
         }
     }
 
@@ -511,7 +527,8 @@ impl<V> Node<V> {
         if common_prefix_len == prefix.as_bytes().len() {
             let value = self.take_value();
             let child = self.take_child();
-            let node = Node::new(&self.label()[common_prefix_len..], value, child, None);
+            // let node = Node::new(&self.label()[common_prefix_len..], value, child, None);
+            todo!();
             if let Some(sibling) = self.take_sibling() {
                 *self = sibling;
             }
@@ -564,8 +581,10 @@ impl<V> Node<V> {
                 ptr: self.ptr,
                 _marker: PhantomData,
             };
-            let node = Node::new(key.as_bytes(), Some(value), None, Some(this));
-            self.ptr = node.ptr;
+            // let node = Node::new(key.as_bytes(), Some(value), None, Some(this));
+            // self.ptr = node.ptr;
+
+            todo!();
             mem::forget(node);
             return None;
         }
@@ -586,15 +605,17 @@ impl<V> Node<V> {
             if let Some(child) = self.child_mut() {
                 return child.insert(next, value);
             }
-            let child = Node::new(next.as_bytes(), Some(value), None, None);
-            self.set_child(child);
+            // let child = Node::new(next.as_bytes(), Some(value), None, None);
+            // self.set_child(child);
+            todo!();
             None
         } else if common_prefix_len == 0 {
             if let Some(sibling) = self.sibling_mut() {
                 return sibling.insert(next, value);
             }
-            let sibling = Node::new(next.as_bytes(), Some(value), None, None);
-            self.set_sibling(sibling);
+            // let sibling = Node::new(next.as_bytes(), Some(value), None, None);
+            // self.set_sibling(sibling);
+            todo!();
             None
         } else {
             self.split_at(common_prefix_len);
@@ -602,12 +623,12 @@ impl<V> Node<V> {
             None
         }
     }
-    pub(crate) fn flags(&self) -> Flags {
-        Flags::from_bits_truncate(self.header().flags.bits())
-    }
-    fn set_flags(&mut self, other: Flags, value: bool) {
-        self.header_mut().flags.set(other, value);
-    }
+    // pub(crate) fn flags(&self) -> Flags {
+    //     Flags::from_bits_truncate(self.header().flags.bits())
+    // }
+    // fn set_flags(&mut self, other: Flags, value: bool) {
+    //     self.header_mut().flags.set(other, value);
+    // }
     fn label_len(&self) -> usize {
         self.header().label_len as usize
     }
@@ -617,9 +638,10 @@ impl<V> Node<V> {
         let child = self.take_child();
         let sibling = self.take_sibling();
 
-        let child = Node::new(&self.label()[position..], value, child, None);
-        let parent = Node::new(&self.label()[..position], None, Some(child), sibling);
-        *self = parent;
+        // let child = Node::new(&self.label()[position..], value, child, None);
+        // let parent = Node::new(&self.label()[..position], None, Some(child), sibling);
+        // *self = parent;
+        todo!();
     }
     fn try_reclaim_sibling(&mut self) {
         let sibling = assert_some!(self.sibling());
@@ -660,8 +682,9 @@ impl<V> Node<V> {
             let mut label = Vec::with_capacity(self.label_len() + child.label_len());
             label.extend(self.label());
             label.extend(child.label());
-            let node = Self::new(&label, value, grandchild, sibling);
-            *self = node;
+            // let node = Self::new(&label, value, grandchild, sibling);
+            // *self = node;
+            todo!();
         }
     }
 }
@@ -677,7 +700,8 @@ impl<V: Clone> Clone for Node<V> {
         let value = self.value().cloned();
         let child = self.child().cloned();
         let sibling = self.sibling().cloned();
-        Node::new(label, value, child, sibling)
+        // Node::new(label, value, child, sibling)
+        todo!();
     }
 }
 impl<V> IntoIterator for Node<V> {
@@ -729,8 +753,7 @@ pub struct IterMut<'a, V: 'a> {
 pub struct NodeMut<'a, V: 'a> {
     label: &'a [u8],
     value: Option<&'a mut V>,
-    sibling: Option<&'a mut Node<V>>,
-    child: Option<&'a mut Node<V>>,
+    children: &'a mut [Node<V>],
 }
 impl<'a, V: 'a> NodeMut<'a, V> {
     /// Returns the label of the node.
@@ -749,14 +772,15 @@ impl<'a, V: 'a> Iterator for IterMut<'a, V> {
     fn next(&mut self) -> Option<Self::Item> {
         if let Some((level, node)) = self.stack.pop() {
             let mut node = node.as_mut();
-            if level != 0 {
-                if let Some(sibling) = node.sibling.take() {
-                    self.stack.push((level, sibling));
-                }
-            }
-            if let Some(child) = node.child.take() {
-                self.stack.push((level + 1, child));
-            }
+            // if level != 0 {
+            //     if let Some(sibling) = node.sibling.take() {
+            //         self.stack.push((level, sibling));
+            //     }
+            // }
+            // if let Some(child) = node.child.take() {
+            //     self.stack.push((level + 1, child));
+            // }
+            todo!();
             Some((level, node))
         } else {
             None
@@ -782,16 +806,18 @@ where
             let key = self.key.strip_n_prefix(offset);
             let (_next, common_prefix_len) = key.strip_common_prefix_and_len(node.label());
             if common_prefix_len == 0 && key.cmp_first_item(node.label()).is_ge() {
-                if let Some(sibling) = node.sibling() {
-                    self.stack.push((offset, sibling));
-                }
+                // if let Some(sibling) = node.sibling() {
+                //     self.stack.push((offset, sibling));
+                // }
+                todo!();
             }
 
             if common_prefix_len == node.label().len() {
                 let prefix_len = offset + common_prefix_len;
-                if let Some(child) = node.child() {
-                    self.stack.push((prefix_len, child));
-                }
+                // if let Some(child) = node.child() {
+                //     self.stack.push((prefix_len, child));
+                // }
+                todo!();
                 return Some((prefix_len, node));
             }
         }
@@ -817,16 +843,18 @@ where
             let key = self.key.as_ref().strip_n_prefix(offset);
             let (_next, common_prefix_len) = key.strip_common_prefix_and_len(node.label());
             if common_prefix_len == 0 && key.cmp_first_item(node.label()).is_ge() {
-                if let Some(sibling) = node.sibling() {
-                    self.stack.push((offset, sibling));
-                }
+                // if let Some(sibling) = node.sibling() {
+                //     self.stack.push((offset, sibling));
+                // }
+                todo!();
             }
 
             if common_prefix_len == node.label().len() {
                 let prefix_len = offset + common_prefix_len;
-                if let Some(child) = node.child() {
-                    self.stack.push((prefix_len, child));
-                }
+                // if let Some(child) = node.child() {
+                //     self.stack.push((prefix_len, child));
+                // }
+                todo!();
                 return Some((prefix_len, node));
             }
         }
@@ -869,8 +897,9 @@ mod tests {
         let node = Node::<()>::root();
         assert!(node.label().is_empty());
         assert!(node.value().is_none());
-        assert!(node.child().is_none());
-        assert!(node.sibling().is_none());
+        // assert!(node.child().is_none());
+        // assert!(node.sibling().is_none());
+        assert!(node.children().is_empty());
     }
 
     #[test]
@@ -888,10 +917,10 @@ mod tests {
         assert_eq!(node1.sibling().map(|n| n.label()), Some(&b"foo"[..]));
 
         // If the length of a label name is longer than 255, it will be splitted to two nodes.
-        let node2 = Node::new([b'a'; 256].as_ref(), Some(4), Some(node1), None);
+        let node2 = Node::new([b'a'; 255].as_ref(), Some(4), Some(node1), None);
         assert_eq!(node2.label(), [b'a'; 255].as_ref());
         assert_eq!(node2.value(), None);
-        assert_eq!(node2.child().map(|n| n.label()), Some(&b"a"[..]));
+        assert_eq!(node2.child().map(|n| n.label()), None);
         assert_eq!(node2.sibling().map(|n| n.label()), None);
 
         assert_eq!(node2.child().unwrap().value(), Some(&4));
