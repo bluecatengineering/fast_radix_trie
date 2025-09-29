@@ -231,8 +231,8 @@ impl<V> Node<V> {
     pub fn children_len(&self) -> usize {
         self.header().children_len as usize
     }
-    /// adds child at i and shifts elements left
-    /// node must have children already
+    /// adds child at i and shifts elements right
+    /// node must have children already and i <= len
     unsafe fn add_child(&mut self, new_child: Node<V>, i: usize) {
         debug_assert!(
             i <= self.children_len() as usize,
@@ -264,7 +264,7 @@ impl<V> Node<V> {
                 ptr: new_ptr,
                 ptr_data: new_ptr_data,
             };
-            // write data in left to right order
+            // write data in right to left order since we're growing
             // new_ptr.value_ptr().copy_from(value_ptr, 1);
             new_ptr.write_value(value);
             // shift children from [i..] to [i+1..]
@@ -283,6 +283,64 @@ impl<V> Node<V> {
         }
     }
 
+    /// removes child at i and shifts elements left
+    /// node must have children already
+    unsafe fn remove_child(&mut self, i: usize) -> Node<V> {
+        debug_assert!(
+            i < self.children_len() as usize,
+            "child index out of bounds: {i} >= {}",
+            self.children_len()
+        );
+
+        let new_header = NodeHeader {
+            label_len: self.label_len() as u8,
+            children_len: self.children_len() as u8 - 1,
+        };
+        let old_children_len = self.children_len();
+        let new_ptr_data = new_header.ptr_data();
+        let new_size = new_ptr_data.layout.size();
+        let new_layout = new_ptr_data.layout;
+        let old_layout = self.ptr_data().layout;
+        // TODO: could use ptr::copy since we use realloc
+        let value = self.take_value();
+        let old_ptr = NodePtrAndData {
+            ptr: self.ptr,
+            ptr_data: self.ptr_data(),
+        };
+
+        unsafe {
+            // get child at i
+            let removed_child = assert_some!(old_ptr.children_ptr()).add(i).read();
+            // child.drop_in_place(); // if we want to drop instead of return
+
+            let mut new_ptr = NodePtrAndData {
+                ptr: self.ptr,
+                ptr_data: new_ptr_data,
+            };
+            // write data in left to right order since we're shrinking
+            new_ptr.write_header(new_header);
+            // shift children from [i+1..] to [i..]
+            let num = old_children_len - (i + 1);
+            assert_some!(new_ptr.children_ptr())
+                .add(i)
+                .copy_from(assert_some!(new_ptr.children_ptr()).add(i + 1), num);
+
+            let new_ptr =
+                alloc::alloc::realloc(self.ptr.as_ptr().cast(), old_layout, new_size).cast();
+            let Some(new_ptr) = NonNull::new(new_ptr) else {
+                alloc::alloc::handle_alloc_error(new_layout);
+            };
+            let new_ptr_data = new_header.ptr_data();
+            let mut new_ptr = NodePtrAndData {
+                ptr: new_ptr,
+                ptr_data: new_ptr_data,
+            };
+            // write value in new shrunken space
+            new_ptr.write_value(value);
+            *self = new_ptr.assume_init();
+            removed_child
+        }
+    }
     // /// Takes the child out of this node.
     // pub fn take_child(&mut self) -> Option<Self> {
     //     unsafe { self.ptr_data().take_child(self.ptr) }
