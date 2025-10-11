@@ -33,15 +33,15 @@ use alloc::string::String;
 use alloc::vec::Vec;
 use core::cmp::Ordering;
 
-pub use map::{GenericPatriciaMap, PatriciaMap, StringPatriciaMap};
-pub use set::{GenericPatriciaSet, PatriciaSet, StringPatriciaSet};
+// pub use map::{GenericPatriciaMap, PatriciaMap, StringPatriciaMap};
+// pub use set::{GenericPatriciaSet, PatriciaSet, StringPatriciaSet};
 
-pub mod map;
-pub mod set;
+// pub mod map;
+// pub mod set;
 
-mod node;
-mod node_header;
-mod tree;
+// mod node;
+// mod node_header;
+// mod tree;
 
 /// This trait represents a bytes type that can be used as the key type of patricia trees.
 pub trait Bytes {
@@ -157,5 +157,94 @@ impl BorrowedBytes for str {
 
     fn strip_n_prefix(&self, n: usize) -> &Self {
         &self[n..]
+    }
+}
+// TODO: benchmark vs self.iter().zip(other.iter()).take_while(|(a,b)| a == b).count()
+
+pub fn longest_common_prefix_by_byte(a: &[u8], b: &[u8]) -> Option<(usize, Ordering)> {
+    let min_len = core::cmp::min(a.len(), b.len());
+    let i = a.iter().zip(b.iter()).take_while(|(a, b)| a == b).count();
+    // if i is 0 or there is nothing after i for one of the slices, return None
+    if i == min_len {
+        None
+    } else {
+        Some((i, a[i].cmp(&b[i])))
+    }
+}
+
+/// returns index of where a & b differ, and which is larger
+/// otherwise returns None
+pub fn longest_common_prefix(a: &[u8], b: &[u8]) -> Option<(usize, Ordering)> {
+    let min_len = core::cmp::min(a.len(), b.len());
+
+    let mut i = 0;
+    // go through 8 bytes at a time
+    for (a_chunk, b_chunk) in a.chunks_exact(8).zip(b.chunks_exact(8)) {
+        let ax = u64::from_ne_bytes(a_chunk.try_into().ok()?);
+        let bx = u64::from_ne_bytes(b_chunk.try_into().ok()?);
+
+        if ax != bx {
+            // find byte diff
+            let diff = i + ((ax ^ bx).trailing_zeros() / 8) as usize;
+            return Some((diff, a[diff].cmp(&b[diff])));
+        }
+        i += 8;
+    }
+    // process remaining bytes less than 8 - one at a time
+    while i < min_len {
+        if a[i] != b[i] {
+            return Some((i, a[i].cmp(&b[i])));
+        }
+        i += 1;
+    }
+
+    None
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    #[test]
+    fn test_longest_common_prefix() {
+        // short common prefix
+        assert_eq!(
+            longest_common_prefix(b"123456789", b"1234abcdef"),
+            Some((4, Ordering::Less))
+        );
+        assert_eq!(
+            longest_common_prefix_by_byte(b"123456789", b"1234abcdef"),
+            Some((4, Ordering::Less))
+        );
+        // long common prefix
+        assert_eq!(
+            longest_common_prefix(
+                b"1234444444444444444444444456789",
+                b"12344444444444444444444444a"
+            ),
+            Some((26, Ordering::Less))
+        );
+        assert_eq!(
+            longest_common_prefix_by_byte(
+                b"1234444444444444444444444456789",
+                b"12344444444444444444444444a"
+            ),
+            Some((26, Ordering::Less))
+        );
+        // both empty
+        assert_eq!(longest_common_prefix(b"", b""), None);
+        assert_eq!(longest_common_prefix_by_byte(b"", b""), None);
+        // no common prefix -- min_len == 0
+        assert_eq!(longest_common_prefix(b"123", b""), None);
+        assert_eq!(longest_common_prefix_by_byte(b"123", b""), None);
+        // no common prefix but both have bytes
+        assert_eq!(
+            longest_common_prefix(b"foobar", b"notfoobar"),
+            Some((0, Ordering::Less))
+        );
+        assert_eq!(
+            longest_common_prefix_by_byte(b"foobar", b"notfoobar"),
+            Some((0, Ordering::Less))
+        );
     }
 }

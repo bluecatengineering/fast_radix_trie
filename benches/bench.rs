@@ -1,11 +1,35 @@
 use criterion::{BatchSize, Criterion, criterion_group, criterion_main};
-use patricia_tree::PatriciaSet;
+use patricia_tree;
 use rand::{Rng, seq::IndexedRandom};
 
 use std::{
     collections::{BTreeSet, HashSet},
     hint::black_box,
 };
+
+fn bench_longest_common_prefix(c: &mut Criterion) {
+    let mut group = c.benchmark_group("longest_common_prefix");
+
+    group.bench_function("LCP by 8 bytes", |b| {
+        b.iter(|| {
+            patricia_tree::longest_common_prefix(
+                black_box(b"abcdefghijklmnopqrstuvwxyz123"),
+                black_box(b"abcdefghijklmnopqrstuvwxyzabc"),
+            );
+        })
+    });
+
+    group.bench_function("LCP byte by byte", |b| {
+        b.iter(|| {
+            patricia_tree::longest_common_prefix_by_byte(
+                black_box(b"abcdefghijklmnopqrstuvwxyz123"),
+                black_box(b"abcdefghijklmnopqrstuvwxyzabc"),
+            );
+        })
+    });
+
+    group.finish();
+}
 
 fn bench_insertion(c: &mut Criterion) {
     let mut group = c.benchmark_group("insertion");
@@ -133,5 +157,11 @@ fn bench_removal(c: &mut Criterion) {
     group.finish();
 }
 
-criterion_group!(benches, bench_insertion, bench_retrieval, bench_removal);
+criterion_group!(
+    benches,
+    bench_longest_common_prefix,
+    bench_insertion,
+    bench_retrieval,
+    bench_removal
+);
 criterion_main!(benches);

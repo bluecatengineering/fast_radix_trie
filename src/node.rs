@@ -140,12 +140,6 @@ impl<V> Node<V> {
             ptr.write_label(label);
             ptr.write_children(children);
             ptr.write_value(value);
-            // if let Some(child) = child {
-            //     ptr.write_child(child);
-            // }
-            // if let Some(sibling) = sibling {
-            //     ptr.write_sibling(sibling);
-            // }
             ptr.assume_init()
         }
     }
@@ -297,7 +291,7 @@ impl<V> Node<V> {
             children_len: self.children_len() as u8 - 1,
         };
         let old_children_len = self.children_len();
-        let new_ptr_data = new_header.ptr_data();
+        let new_ptr_data = new_header.ptr_data::<V>();
         let new_size = new_ptr_data.layout.size();
         let new_layout = new_ptr_data.layout;
         let old_layout = self.ptr_data().layout;
@@ -341,15 +335,6 @@ impl<V> Node<V> {
             removed_child
         }
     }
-    // /// Takes the child out of this node.
-    // pub fn take_child(&mut self) -> Option<Self> {
-    //     unsafe { self.ptr_data().take_child(self.ptr) }
-    // }
-
-    // /// Takes the sibling out of this node.
-    // pub fn take_sibling(&mut self) -> Option<Self> {
-    //     unsafe { self.ptr_data().take_sibling(self.ptr) }
-    // }
 
     /// Sets the value of this node.
     pub fn set_value(&mut self, value: V) {
@@ -633,6 +618,7 @@ impl<V> Node<V> {
             None
         }
     }
+
     pub(crate) fn insert<K: ?Sized + BorrowedBytes>(&mut self, key: &K, value: V) -> Option<V> {
         if key.cmp_first_item(self.label()).is_lt() {
             let this = Node {
@@ -719,6 +705,7 @@ impl<V> Node<V> {
             self.set_child(child);
         }
     }
+
     pub(crate) fn try_merge_with_child(&mut self, level: usize) {
         if level == 0 {
             return;
@@ -756,6 +743,7 @@ impl<V: Clone> Clone for Node<V> {
     fn clone(&self) -> Self {
         let label = self.label();
         let value = self.value().cloned();
+        let children = self.children();
         let child = self.child().cloned();
         let sibling = self.sibling().cloned();
         // Node::new(label, value, child, sibling)
