@@ -273,8 +273,14 @@ impl<V> Node<V> {
             new_ptr.write_header(new_header);
             // label already there from realloc
             // re-assign ptr to avoid Drop
-            self.ptr = new_ptr.assume_init().ptr;
+            self.ptr = new_ptr.assume_init().into_ptr_forget();
         }
+    }
+    /// forget self so Drop is not called and return the ptr
+    fn into_ptr_forget(self) -> NonNull<NodeHeader> {
+        let ptr = self.ptr;
+        mem::forget(self);
+        ptr
     }
 
     /// removes child at i and shifts elements left
@@ -332,7 +338,7 @@ impl<V> Node<V> {
             // write value in new shrunken space
             new_ptr.write_value(value);
             // re-assign ptr to avoid drop
-            self.ptr = new_ptr.assume_init().ptr;
+            self.ptr = new_ptr.assume_init().into_ptr_forget();
             removed_child
         }
     }
@@ -808,7 +814,7 @@ impl<V> Node<V> {
             }
             new_ptr.write_value(None);
             // re-assign ptr to avoid Drop of old children
-            self.ptr = new_ptr.assume_init().ptr;
+            self.ptr = new_ptr.assume_init().into_ptr_forget();
         }
     }
 
