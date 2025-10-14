@@ -178,6 +178,9 @@ impl<V> Node<V> {
     pub fn children(&self) -> &[Node<V>] {
         unsafe { self.ptr_data().children(self.ptr) }
     }
+    pub fn children_mut(&self) -> &mut [Node<V>] {
+        unsafe { self.ptr_data().children_mut(self.ptr) }
+    }
     // TODO: consider storing first bytes in node? trade memory for lookup speed
     fn children_first_bytes(&self) -> impl Iterator<Item = Option<u8>> {
         self.children().iter().map(|n| n.label().first().cloned())
@@ -440,7 +443,11 @@ impl<V> Node<V> {
         // TODO: get_unchecked?
         self.children().get(i)
     }
-
+    fn child_with_first_mut(&self, byte: u8) -> Option<&mut Self> {
+        let i = self.child_index_with_first(byte)?;
+        // TODO: get_unchecked?
+        self.children_mut().get_mut(i)
+    }
     fn child_index_with_first(&self, byte: u8) -> Option<usize> {
         self.children_first_bytes()
             .enumerate()
@@ -475,17 +482,16 @@ impl<V> Node<V> {
     }
 
     pub(crate) fn get_mut<K: ?Sized + BorrowedBytes>(&mut self, key: &K) -> Option<&mut V> {
-        let (next, common_prefix_len) = key.strip_common_prefix_and_len(self.label());
-        if common_prefix_len == self.label().len() {
-            if next.is_empty() {
-                self.value_mut()
-            } else {
-                self.child_mut().and_then(|child| child.get_mut(next))
+        let mut cur = self;
+        let mut key = key.as_bytes();
+        loop {
+            key = crate::strip_prefix(key, cur.label())?;
+            match key.first() {
+                None => return cur.value_mut(),
+                Some(first) => {
+                    cur = cur.child_with_first_mut(*first)?;
+                }
             }
-        } else if common_prefix_len == 0 && key.cmp_first_item(self.label()).is_ge() {
-            self.sibling_mut().and_then(|sibling| sibling.get_mut(next))
-        } else {
-            None
         }
     }
     pub(crate) fn longest_common_prefix_len<K: ?Sized + BorrowedBytes>(
