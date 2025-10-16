@@ -39,6 +39,18 @@ jobs:
       - run: rustup update ${{ matrix.toolchain }}
       - run: cargo test --all-features --all
 
+  miri:
+    name: Miri
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        toolchain: [nightly]
+    steps:
+      - name: Checkout sources
+        uses: actions/checkout@v5
+      - run: rustup update ${{ matrix.toolchain }}
+      - run: cargo miri test --all-features --all
+
   lints:
     name: Lints
     runs-on: ubuntu-latest
