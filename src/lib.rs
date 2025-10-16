@@ -33,15 +33,15 @@ use alloc::string::String;
 use alloc::vec::Vec;
 use core::cmp::Ordering;
 
-pub use map::{GenericPatriciaMap, PatriciaMap, StringPatriciaMap};
-pub use set::{GenericPatriciaSet, PatriciaSet, StringPatriciaSet};
+// pub use map::{GenericPatriciaMap, PatriciaMap, StringPatriciaMap};
+// pub use set::{GenericPatriciaSet, PatriciaSet, StringPatriciaSet};
 
-pub mod map;
-pub mod set;
+// pub mod map;
+// pub mod set;
 
 mod node;
 mod node_header;
-mod tree;
+// mod tree;
 
 /// This trait represents a bytes type that can be used as the key type of patricia trees.
 pub trait Bytes {
@@ -281,6 +281,8 @@ mod test {
             longest_common_prefix_by_byte(b"000000001", b"00000000"),
             (8, None)
         );
+        // both are equal
+        assert_eq!(longest_common_prefix(b"000000001", b"000000001"), (9, None));
     }
 
     #[test]

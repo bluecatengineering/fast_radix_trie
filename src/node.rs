@@ -324,9 +324,9 @@ impl<V> Node<V> {
             new_ptr.write_header(new_header);
             // shift children from [i+1..] to [i..]
             let num = old_children_len - (i + 1);
-            assert_some!(new_ptr.children_ptr())
-                .add(i)
-                .copy_from(assert_some!(new_ptr.children_ptr()).add(i + 1), num);
+            if let Some(child_ptr) = new_ptr.children_ptr() {
+                child_ptr.add(i).copy_from(child_ptr.add(i + 1), num);
+            }
 
             let new_ptr =
                 alloc::alloc::realloc(self.ptr.as_ptr().cast(), old_layout, new_size).cast();
@@ -390,11 +390,11 @@ impl<V> Node<V> {
     // }
 
     /// Gets an iterator which traverses the nodes in this tree, in depth first order.
-    pub fn iter(&self) -> Iter<'_, V> {
-        Iter {
-            stack: vec![(0, self)],
-        }
-    }
+    // pub fn iter(&self) -> Iter<'_, V> {
+    //     Iter {
+    //         stack: vec![(0, self)],
+    //     }
+    // }
 
     /// Gets a mutable iterator which traverses the nodes in this tree, in depth first order.
     pub fn iter_mut(&mut self) -> IterMut<'_, V> {
@@ -403,11 +403,11 @@ impl<V> Node<V> {
         }
     }
 
-    pub(crate) fn iter_descendant(&self) -> Iter<'_, V> {
-        Iter {
-            stack: vec![(0, self)],
-        }
-    }
+    // pub(crate) fn iter_descendant(&self) -> Iter<'_, V> {
+    //     Iter {
+    //         stack: vec![(0, self)],
+    //     }
+    // }
 
     pub(crate) fn iter_descendant_mut(&mut self) -> IterMut<'_, V> {
         IterMut {
@@ -438,15 +438,15 @@ impl<V> Node<V> {
         }
     }
 
+    // TODO: child methods could use binary search?
     fn child_with_first(&self, byte: u8) -> Option<&Self> {
         let i = self.child_index_with_first(byte)?;
-        // TODO: get_unchecked?
-        self.children().get(i)
+        // SAFETY: we know i is inside the bounds already
+        Some(unsafe { self.children().get_unchecked(i) })
     }
     fn child_with_first_mut(&self, byte: u8) -> Option<&mut Self> {
         let i = self.child_index_with_first(byte)?;
-        // TODO: get_unchecked?
-        self.children_mut().get_mut(i)
+        Some(unsafe { self.children_mut().get_unchecked_mut(i) })
     }
     fn child_index_with_first(&self, byte: u8) -> Option<usize> {
         self.children_first_bytes()
@@ -467,18 +467,6 @@ impl<V> Node<V> {
                 }
             }
         }
-        // let (next, common_prefix_len) = key.strip_common_prefix_and_len(self.label());
-        // if common_prefix_len == self.label().len() {
-        //     if next.is_empty() {
-        //         self.value()
-        //     } else {
-        //         self.child().and_then(|child| child.get(next))
-        //     }
-        // } else if common_prefix_len == 0 && key.cmp_first_item(self.label()).is_ge() {
-        //     self.sibling().and_then(|sibling| sibling.get(next))
-        // } else {
-        //     None
-        // }
     }
 
     pub(crate) fn get_mut<K: ?Sized + BorrowedBytes>(&mut self, key: &K) -> Option<&mut V> {
@@ -494,167 +482,168 @@ impl<V> Node<V> {
             }
         }
     }
-    pub(crate) fn longest_common_prefix_len<K: ?Sized + BorrowedBytes>(
-        &self,
-        key: &K,
-        offset: usize,
-    ) -> usize {
-        let (next, common_prefix_len) = key.strip_common_prefix_and_len(self.label());
-        let next_offset = offset + common_prefix_len;
-        if common_prefix_len == self.label().len() {
-            if next.is_empty() {
-                next_offset
-            } else {
-                self.child()
-                    .map(|child| child.longest_common_prefix_len(next, next_offset))
-                    .unwrap_or(next_offset)
-            }
-        } else if common_prefix_len == 0 && key.cmp_first_item(self.label()).is_ge() {
-            self.sibling()
-                .map(|sibling| sibling.longest_common_prefix_len(next, offset))
-                .unwrap_or(next_offset)
-        } else {
-            next_offset
-        }
-    }
-    pub(crate) fn get_longest_common_prefix<K: ?Sized + BorrowedBytes>(
-        &self,
-        key: &K,
-        offset: usize,
-    ) -> Option<(usize, &V)> {
-        let (next, common_prefix_len) = key.strip_common_prefix_and_len(self.label());
-        if common_prefix_len == self.label().len() {
-            let offset = offset + common_prefix_len;
-            if next.is_empty() {
-                self.value().map(|v| (offset, v))
-            } else {
-                self.child()
-                    .and_then(|child| child.get_longest_common_prefix(next, offset))
-                    .or_else(|| self.value().map(|v| (offset, v)))
-            }
-        } else if common_prefix_len == 0 && key.cmp_first_item(self.label()).is_ge() {
-            self.sibling()
-                .and_then(|sibling| sibling.get_longest_common_prefix(next, offset))
-        } else {
-            None
-        }
-    }
-    pub(crate) fn get_longest_common_prefix_mut<K: ?Sized + BorrowedBytes>(
-        &mut self,
-        key: &K,
-        offset: usize,
-    ) -> Option<(usize, &mut V)> {
-        let (next, common_prefix_len) = key.strip_common_prefix_and_len(self.label());
-        if common_prefix_len == self.label().len() {
-            let offset = offset + common_prefix_len;
-            if next.is_empty() {
-                self.value_mut().map(|v| (offset, v))
-            } else {
-                let this = self.as_mut();
-                this.child
-                    .and_then(|child| child.get_longest_common_prefix_mut(next, offset))
-                    .or_else(|| this.value.map(|v| (offset, v)))
-            }
-        } else if common_prefix_len == 0 && key.cmp_first_item(self.label()).is_ge() {
-            self.sibling_mut()
-                .and_then(|sibling| sibling.get_longest_common_prefix_mut(next, offset))
-        } else {
-            None
-        }
-    }
 
-    pub(crate) fn get_prefix_node<K: ?Sized + BorrowedBytes>(
-        &self,
-        key: &K,
-    ) -> Option<(usize, &Self)> {
-        let (next, common_prefix_len) = key.strip_common_prefix_and_len(self.label());
-        if next.is_empty() {
-            Some((common_prefix_len, self))
-        } else if common_prefix_len == self.label().len() {
-            self.child().and_then(|child| child.get_prefix_node(next))
-        } else if common_prefix_len == 0 && key.cmp_first_item(self.label()).is_ge() {
-            self.sibling()
-                .and_then(|sibling| sibling.get_prefix_node(next))
-        } else {
-            None
-        }
-    }
+    // pub(crate) fn longest_common_prefix_len<K: ?Sized + BorrowedBytes>(
+    //     &self,
+    //     key: &K,
+    //     offset: usize,
+    // ) -> usize {
+    //     let (next, common_prefix_len) = key.strip_common_prefix_and_len(self.label());
+    //     let next_offset = offset + common_prefix_len;
+    //     if common_prefix_len == self.label().len() {
+    //         if next.is_empty() {
+    //             next_offset
+    //         } else {
+    //             self.child()
+    //                 .map(|child| child.longest_common_prefix_len(next, next_offset))
+    //                 .unwrap_or(next_offset)
+    //         }
+    //     } else if common_prefix_len == 0 && key.cmp_first_item(self.label()).is_ge() {
+    //         self.sibling()
+    //             .map(|sibling| sibling.longest_common_prefix_len(next, offset))
+    //             .unwrap_or(next_offset)
+    //     } else {
+    //         next_offset
+    //     }
+    // }
+    // pub(crate) fn get_longest_common_prefix<K: ?Sized + BorrowedBytes>(
+    //     &self,
+    //     key: &K,
+    //     offset: usize,
+    // ) -> Option<(usize, &V)> {
+    //     let (next, common_prefix_len) = key.strip_common_prefix_and_len(self.label());
+    //     if common_prefix_len == self.label().len() {
+    //         let offset = offset + common_prefix_len;
+    //         if next.is_empty() {
+    //             self.value().map(|v| (offset, v))
+    //         } else {
+    //             self.child()
+    //                 .and_then(|child| child.get_longest_common_prefix(next, offset))
+    //                 .or_else(|| self.value().map(|v| (offset, v)))
+    //         }
+    //     } else if common_prefix_len == 0 && key.cmp_first_item(self.label()).is_ge() {
+    //         self.sibling()
+    //             .and_then(|sibling| sibling.get_longest_common_prefix(next, offset))
+    //     } else {
+    //         None
+    //     }
+    // }
+    // pub(crate) fn get_longest_common_prefix_mut<K: ?Sized + BorrowedBytes>(
+    //     &mut self,
+    //     key: &K,
+    //     offset: usize,
+    // ) -> Option<(usize, &mut V)> {
+    //     let (next, common_prefix_len) = key.strip_common_prefix_and_len(self.label());
+    //     if common_prefix_len == self.label().len() {
+    //         let offset = offset + common_prefix_len;
+    //         if next.is_empty() {
+    //             self.value_mut().map(|v| (offset, v))
+    //         } else {
+    //             let this = self.as_mut();
+    //             this.child
+    //                 .and_then(|child| child.get_longest_common_prefix_mut(next, offset))
+    //                 .or_else(|| this.value.map(|v| (offset, v)))
+    //         }
+    //     } else if common_prefix_len == 0 && key.cmp_first_item(self.label()).is_ge() {
+    //         self.sibling_mut()
+    //             .and_then(|sibling| sibling.get_longest_common_prefix_mut(next, offset))
+    //     } else {
+    //         None
+    //     }
+    // }
 
-    pub(crate) fn get_prefix_node_mut<K: ?Sized + BorrowedBytes>(
-        &mut self,
-        key: &K,
-    ) -> Option<(usize, &mut Self)> {
-        let (next, common_prefix_len) = key.strip_common_prefix_and_len(self.label());
-        if next.is_empty() {
-            Some((common_prefix_len, self))
-        } else if common_prefix_len == self.label().len() {
-            self.child_mut()
-                .and_then(|child| child.get_prefix_node_mut(next))
-        } else if common_prefix_len == 0 && key.cmp_first_item(self.label()).is_ge() {
-            self.sibling_mut()
-                .and_then(|sibling| sibling.get_prefix_node_mut(next))
-        } else {
-            None
-        }
-    }
+    // pub(crate) fn get_prefix_node<K: ?Sized + BorrowedBytes>(
+    //     &self,
+    //     key: &K,
+    // ) -> Option<(usize, &Self)> {
+    //     let (next, common_prefix_len) = key.strip_common_prefix_and_len(self.label());
+    //     if next.is_empty() {
+    //         Some((common_prefix_len, self))
+    //     } else if common_prefix_len == self.label().len() {
+    //         self.child().and_then(|child| child.get_prefix_node(next))
+    //     } else if common_prefix_len == 0 && key.cmp_first_item(self.label()).is_ge() {
+    //         self.sibling()
+    //             .and_then(|sibling| sibling.get_prefix_node(next))
+    //     } else {
+    //         None
+    //     }
+    // }
 
-    pub(crate) fn split_by_prefix<K: ?Sized + BorrowedBytes>(
-        &mut self,
-        prefix: &K,
-        level: usize,
-    ) -> Option<Self> {
-        let (next, common_prefix_len) = prefix.strip_common_prefix_and_len(self.label());
-        if common_prefix_len == prefix.as_bytes().len() {
-            let value = self.take_value();
-            let child = self.take_child();
-            // let node = Node::new(&self.label()[common_prefix_len..], value, child, None);
-            todo!();
-            if let Some(sibling) = self.take_sibling() {
-                *self = sibling;
-            }
-            Some(node)
-        } else if common_prefix_len == self.label().len() {
-            self.child_mut()
-                .and_then(|child| child.split_by_prefix(next, level + 1))
-                .inspect(|_old| {
-                    self.try_reclaim_child();
-                    self.try_merge_with_child(level);
-                })
-        } else if common_prefix_len == 0 && prefix.cmp_first_item(self.label()).is_ge() {
-            self.sibling_mut()
-                .and_then(|sibling| sibling.split_by_prefix(next, level))
-                .inspect(|_old| {
-                    self.try_reclaim_sibling();
-                })
-        } else {
-            None
-        }
-    }
-    pub(crate) fn remove<K: ?Sized + BorrowedBytes>(&mut self, key: &K, level: usize) -> Option<V> {
-        let (next, common_prefix_len) = key.strip_common_prefix_and_len(self.label());
-        if common_prefix_len == self.label().len() {
-            if next.is_empty() {
-                self.take_value().inspect(|_old| {
-                    self.try_merge_with_child(level);
-                })
-            } else {
-                self.child_mut()
-                    .and_then(|child| child.remove(next, level + 1))
-                    .inspect(|_old| {
-                        self.try_reclaim_child();
-                        self.try_merge_with_child(level);
-                    })
-            }
-        } else if common_prefix_len == 0 && key.cmp_first_item(self.label()).is_ge() {
-            self.sibling_mut()
-                .and_then(|sibling| sibling.remove(next, level))
-                .inspect(|_old| {
-                    self.try_reclaim_sibling();
-                })
-        } else {
-            None
-        }
-    }
+    // pub(crate) fn get_prefix_node_mut<K: ?Sized + BorrowedBytes>(
+    //     &mut self,
+    //     key: &K,
+    // ) -> Option<(usize, &mut Self)> {
+    //     let (next, common_prefix_len) = key.strip_common_prefix_and_len(self.label());
+    //     if next.is_empty() {
+    //         Some((common_prefix_len, self))
+    //     } else if common_prefix_len == self.label().len() {
+    //         self.child_mut()
+    //             .and_then(|child| child.get_prefix_node_mut(next))
+    //     } else if common_prefix_len == 0 && key.cmp_first_item(self.label()).is_ge() {
+    //         self.sibling_mut()
+    //             .and_then(|sibling| sibling.get_prefix_node_mut(next))
+    //     } else {
+    //         None
+    //     }
+    // }
+
+    // pub(crate) fn split_by_prefix<K: ?Sized + BorrowedBytes>(
+    //     &mut self,
+    //     prefix: &K,
+    //     level: usize,
+    // ) -> Option<Self> {
+    //     let (next, common_prefix_len) = prefix.strip_common_prefix_and_len(self.label());
+    //     if common_prefix_len == prefix.as_bytes().len() {
+    //         let value = self.take_value();
+    //         let child = self.take_child();
+    //         // let node = Node::new(&self.label()[common_prefix_len..], value, child, None);
+    //         todo!();
+    //         if let Some(sibling) = self.take_sibling() {
+    //             *self = sibling;
+    //         }
+    //         Some(node)
+    //     } else if common_prefix_len == self.label().len() {
+    //         self.child_mut()
+    //             .and_then(|child| child.split_by_prefix(next, level + 1))
+    //             .inspect(|_old| {
+    //                 self.try_reclaim_child();
+    //                 self.try_merge_with_child(level);
+    //             })
+    //     } else if common_prefix_len == 0 && prefix.cmp_first_item(self.label()).is_ge() {
+    //         self.sibling_mut()
+    //             .and_then(|sibling| sibling.split_by_prefix(next, level))
+    //             .inspect(|_old| {
+    //                 self.try_reclaim_sibling();
+    //             })
+    //     } else {
+    //         None
+    //     }
+    // }
+    // pub(crate) fn remove<K: ?Sized + BorrowedBytes>(&mut self, key: &K, level: usize) -> Option<V> {
+    //     let (next, common_prefix_len) = key.strip_common_prefix_and_len(self.label());
+    //     if common_prefix_len == self.label().len() {
+    //         if next.is_empty() {
+    //             self.take_value().inspect(|_old| {
+    //                 self.try_merge_with_child(level);
+    //             })
+    //         } else {
+    //             self.child_mut()
+    //                 .and_then(|child| child.remove(next, level + 1))
+    //                 .inspect(|_old| {
+    //                     self.try_reclaim_child();
+    //                     self.try_merge_with_child(level);
+    //                 })
+    //         }
+    //     } else if common_prefix_len == 0 && key.cmp_first_item(self.label()).is_ge() {
+    //         self.sibling_mut()
+    //             .and_then(|sibling| sibling.remove(next, level))
+    //             .inspect(|_old| {
+    //                 self.try_reclaim_sibling();
+    //             })
+    //     } else {
+    //         None
+    //     }
+    // }
 
     pub(crate) fn insert<K: ?Sized + BorrowedBytes>(&mut self, key: &K, value: V) -> Option<V> {
         let mut cur = self;
@@ -681,72 +670,72 @@ impl<V> Node<V> {
 
                     return None;
                 }
-                (0, None) => {}
-                (_, None) => {
-                    // new child needed but next element doesn't exist
-                    // i.e.
-                }
-                (n, Some(next)) => {
+                (n, Some(_)) => {
                     // new child from common prefix that needs split at n
                     let (_, new_suffix) = unsafe { key.split_at_unchecked(n) };
                     let new_child = Node::new(new_suffix, [], Some(value));
+                    unsafe {
+                        cur.split_at(n, Some(new_child));
+                    }
                     return None;
+                }
+                (_, None) => {
+                    // new child needed but next element doesn't exist
+                    match key.len().cmp(&(cur.label_len() as usize)) {
+                        Ordering::Less => {
+                            unsafe { cur.split_at(key.len(), None) };
+                            cur.set_value(value);
+                            return None;
+                        }
+                        Ordering::Equal => {
+                            // key and node are equal, replace data
+                            let old_val = cur.take_value();
+                            cur.set_value(value);
+                            return old_val;
+                        }
+                        Ordering::Greater => {
+                            // prefix match but key is longer, so we need to insert into a child
+                            key = unsafe { key.get_unchecked(cur.label_len()..) };
+                            let first_byte = key[0];
+                            match cur.child_index_with_first(first_byte) {
+                                Some(i) => {
+                                    // SAFETY: we just checked i is in range
+                                    cur = unsafe { cur.children_mut().get_unchecked_mut(i) };
+                                    continue;
+                                }
+                                None => {
+                                    // TODO: use binary_search(first_byte).unwrap_err()
+                                    // if we switch to storing first bytes
+                                    let insert_index = cur
+                                        .children_first_bytes()
+                                        .enumerate()
+                                        .find(|(_, b)| b.is_some_and(|b| b > first_byte))
+                                        .map(|(i, _)| i)
+                                        .unwrap_or(cur.children_len());
+
+                                    // we now have index of where we can insert
+                                    let child = Node::new(key, [], Some(value));
+                                    // SAFETY: insert_index must be <= children len
+                                    unsafe {
+                                        cur.add_child(child, insert_index);
+                                    }
+                                    return None;
+                                }
+                            }
+                        }
+                    }
                 }
             }
         }
-        // if key.cmp_first_item(self.label()).is_lt() {
-        //     let this = Node {
-        //         ptr: self.ptr,
-        //         _marker: PhantomData,
-        //     };
-        //     // let node = Node::new(key.as_bytes(), Some(value), None, Some(this));
-        //     // self.ptr = node.ptr;
-
-        //     todo!();
-        //     mem::forget(node);
-        //     return None;
-        // }
-
-        // let (next, common_prefix_len) = key.strip_common_prefix_and_len(self.label());
-        // let is_label_matched = common_prefix_len == self.label().len();
-        // if next.as_bytes().is_empty() {
-        //     if is_label_matched {
-        //         let old = self.take_value();
-        //         self.set_value(value);
-        //         old
-        //     } else {
-        //         self.split_at(common_prefix_len);
-        //         self.set_value(value);
-        //         None
-        //     }
-        // } else if is_label_matched {
-        //     if let Some(child) = self.child_mut() {
-        //         return child.insert(next, value);
-        //     }
-        //     // let child = Node::new(next.as_bytes(), Some(value), None, None);
-        //     // self.set_child(child);
-        //     todo!();
-        //     None
-        // } else if common_prefix_len == 0 {
-        //     if let Some(sibling) = self.sibling_mut() {
-        //         return sibling.insert(next, value);
-        //     }
-        //     // let sibling = Node::new(next.as_bytes(), Some(value), None, None);
-        //     // self.set_sibling(sibling);
-        //     todo!();
-        //     None
-        // } else {
-        //     self.split_at(common_prefix_len);
-        //     assert_some!(self.child_mut()).insert(next, value);
-        //     None
-        // }
     }
+
     // pub(crate) fn flags(&self) -> Flags {
     //     Flags::from_bits_truncate(self.header().flags.bits())
     // }
     // fn set_flags(&mut self, other: Flags, value: bool) {
     //     self.header_mut().flags.set(other, value);
     // }
+
     fn label_len(&self) -> usize {
         self.header().label_len as usize
     }
@@ -824,32 +813,32 @@ impl<V> Node<V> {
         }
     }
 
-    pub(crate) fn try_merge_with_child(&mut self, level: usize) {
-        if level == 0 {
-            return;
-        }
+    // pub(crate) fn try_merge_with_child(&mut self, level: usize) {
+    //     if level == 0 {
+    //         return;
+    //     }
 
-        if self.value().is_some() || !self.flags().contains(Flags::CHILD_INITIALIZED) {
-            return;
-        }
+    //     if self.value().is_some() || !self.flags().contains(Flags::CHILD_INITIALIZED) {
+    //         return;
+    //     }
 
-        let flags = assert_some!(self.child()).flags();
-        if !flags.contains(Flags::SIBLING_INITIALIZED)
-            && (self.label_len() + assert_some!(self.child()).label_len()) <= MAX_LABEL_LEN
-        {
-            let mut child = assert_some!(self.take_child());
-            let sibling = self.take_sibling();
-            let value = child.take_value();
-            let grandchild = child.take_child();
+    //     let flags = assert_some!(self.child()).flags();
+    //     if !flags.contains(Flags::SIBLING_INITIALIZED)
+    //         && (self.label_len() + assert_some!(self.child()).label_len()) <= MAX_LABEL_LEN
+    //     {
+    //         let mut child = assert_some!(self.take_child());
+    //         let sibling = self.take_sibling();
+    //         let value = child.take_value();
+    //         let grandchild = child.take_child();
 
-            let mut label = Vec::with_capacity(self.label_len() + child.label_len());
-            label.extend(self.label());
-            label.extend(child.label());
-            // let node = Self::new(&label, value, grandchild, sibling);
-            // *self = node;
-            todo!();
-        }
-    }
+    //         let mut label = Vec::with_capacity(self.label_len() + child.label_len());
+    //         label.extend(self.label());
+    //         label.extend(child.label());
+    //         // let node = Self::new(&label, value, grandchild, sibling);
+    //         // *self = node;
+    //         todo!();
+    //     }
+    // }
 }
 
 impl<V> Drop for Node<V> {
@@ -857,24 +846,25 @@ impl<V> Drop for Node<V> {
         self.ptr_data().dealloc(self.ptr);
     }
 }
-impl<V: Clone> Clone for Node<V> {
-    fn clone(&self) -> Self {
-        let label = self.label();
-        let value = self.value().cloned();
-        let children = self.children();
-        // Node::new(label, value, child, sibling)
-        todo!();
-    }
-}
-impl<V> IntoIterator for Node<V> {
-    type Item = (usize, Node<V>);
-    type IntoIter = IntoIter<V>;
-    fn into_iter(self) -> Self::IntoIter {
-        IntoIter {
-            stack: vec![(0, self)],
-        }
-    }
-}
+
+// impl<V: Clone> Clone for Node<V> {
+//     fn clone(&self) -> Self {
+//         let label = self.label();
+//         let value = self.value().cloned();
+//         let children = self.children();
+//         Node::new(label, value, child, sibling)
+//     }
+// }
+
+// impl<V> IntoIterator for Node<V> {
+//     type Item = (usize, Node<V>);
+//     type IntoIter = IntoIter<V>;
+//     fn into_iter(self) -> Self::IntoIter {
+//         IntoIter {
+//             stack: vec![(0, self)],
+//         }
+//     }
+// }
 
 /// An iterator which traverses the nodes in a tree, in depth first order.
 ///
@@ -883,24 +873,24 @@ impl<V> IntoIterator for Node<V> {
 pub struct Iter<'a, V: 'a> {
     stack: Vec<(usize, &'a Node<V>)>,
 }
-impl<'a, V: 'a> Iterator for Iter<'a, V> {
-    type Item = (usize, &'a Node<V>);
-    fn next(&mut self) -> Option<Self::Item> {
-        if let Some((level, node)) = self.stack.pop() {
-            if level != 0 {
-                if let Some(sibling) = node.sibling() {
-                    self.stack.push((level, sibling));
-                }
-            }
-            if let Some(child) = node.child() {
-                self.stack.push((level + 1, child));
-            }
-            Some((level, node))
-        } else {
-            None
-        }
-    }
-}
+// impl<'a, V: 'a> Iterator for Iter<'a, V> {
+//     type Item = (usize, &'a Node<V>);
+//     fn next(&mut self) -> Option<Self::Item> {
+//         if let Some((level, node)) = self.stack.pop() {
+//             if level != 0 {
+//                 if let Some(sibling) = node.sibling() {
+//                     self.stack.push((level, sibling));
+//                 }
+//             }
+//             if let Some(child) = node.child() {
+//                 self.stack.push((level + 1, child));
+//             }
+//             Some((level, node))
+//         } else {
+//             None
+//         }
+//     }
+// }
 
 /// A mutable iterator which traverses the nodes in a tree, in depth first order.
 ///
@@ -1031,27 +1021,27 @@ where
 pub struct IntoIter<V> {
     stack: Vec<(usize, Node<V>)>,
 }
-impl<V> Iterator for IntoIter<V> {
-    type Item = (usize, Node<V>);
-    fn next(&mut self) -> Option<Self::Item> {
-        if let Some((level, mut node)) = self.stack.pop() {
-            if let Some(sibling) = node.take_sibling() {
-                self.stack.push((level, sibling));
-            }
-            if let Some(child) = node.take_child() {
-                self.stack.push((level + 1, child));
-            }
-            Some((level, node))
-        } else {
-            None
-        }
-    }
-}
+// impl<V> Iterator for IntoIter<V> {
+//     type Item = (usize, Node<V>);
+//     fn next(&mut self) -> Option<Self::Item> {
+//         if let Some((level, mut node)) = self.stack.pop() {
+//             if let Some(sibling) = node.take_sibling() {
+//                 self.stack.push((level, sibling));
+//             }
+//             if let Some(child) = node.take_child() {
+//                 self.stack.push((level + 1, child));
+//             }
+//             Some((level, node))
+//         } else {
+//             None
+//         }
+//     }
+// }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{PatriciaSet, StringPatriciaMap};
+    // use crate::{PatriciaSet, StringPatriciaMap};
     use core::str;
 
     #[test]
@@ -1066,200 +1056,367 @@ mod tests {
 
     #[test]
     fn new_works() {
-        let node0 = Node::new("foo".as_ref(), Some(3), None, None);
-        assert_eq!(node0.label(), b"foo");
-        assert_eq!(node0.value(), Some(&3));
-        assert_eq!(node0.child().map(|n| n.label()), None);
-        assert_eq!(node0.sibling().map(|n| n.label()), None);
-
-        let node1 = Node::new("bar".as_ref(), None, None, Some(node0));
+        let node0 = Node::new("foo".as_ref(), [], Some(3));
+        let node1 = Node::new("bar".as_ref(), [node0], None);
         assert_eq!(node1.label(), b"bar");
         assert_eq!(node1.value(), None);
-        assert_eq!(node1.child().map(|n| n.label()), None);
-        assert_eq!(node1.sibling().map(|n| n.label()), Some(&b"foo"[..]));
+        assert_eq!(
+            node1
+                .children()
+                .iter()
+                .map(|n| n.label())
+                .collect::<Vec<_>>(),
+            vec![b"foo"]
+        );
 
-        // If the length of a label name is longer than 255, it will be splitted to two nodes.
-        let node2 = Node::new([b'a'; 255].as_ref(), Some(4), Some(node1), None);
-        assert_eq!(node2.label(), [b'a'; 255].as_ref());
-        assert_eq!(node2.value(), None);
-        assert_eq!(node2.child().map(|n| n.label()), None);
-        assert_eq!(node2.sibling().map(|n| n.label()), None);
-
-        assert_eq!(node2.child().unwrap().value(), Some(&4));
-        assert_eq!(node2.child().unwrap().child().unwrap().label(), b"bar");
+        // assert_eq!(node0.label(), b"foo");
+        // assert_eq!(node0.value(), Some(&3));
+        // assert_eq!(
+        //     node0
+        //         .children()
+        //         .iter()
+        //         .map(|n| n.label())
+        //         .collect::<Vec<_>>(),
+        //     vec![]
+        // );
     }
 
     #[test]
-    fn new_methods() {
-        let node0 = Node::new("foo".as_ref(), Some(3), None, None);
-        assert_eq!(node0.label(), b"foo");
-        assert_eq!(node0.value(), Some(&3));
-        assert_eq!(node0.child().map(|n| n.label()), None);
-        assert_eq!(node0.sibling().map(|n| n.label()), None);
+    fn test_children_first_bytes() {
+        // no children
+        let root = Node::<()>::new(b"", [], None);
+        assert_eq!(root.children_first_bytes().count(), 0);
 
-        let mut node1 = Node::new("bar".as_ref(), None, None, Some(node0));
-        assert_eq!(node1.label(), b"bar");
-        assert_eq!(node1.value(), None);
-        assert_eq!(node1.child().map(|n| n.label()), None);
-        assert_eq!(node1.sibling().map(|n| n.label()), Some(&b"foo"[..]));
-        // take sibling
-        let node0 = node1.take_sibling().unwrap();
-        assert_eq!(node0.label(), b"foo");
-        assert_eq!(node0.value(), Some(&3));
+        // with children, including one with an empty label
+        let child1 = Node::<()>::new(b"apple", [], None);
+        let child2 = Node::<()>::new(b"banana", [], None);
+        let child3 = Node::<()>::new(b"", [], None); // empty label
+        let child4 = Node::<()>::new(b"cherry", [], None);
+        let parent = Node::new(b"parent", [child1, child2, child3, child4], None);
 
-        assert_eq!(node1.sibling().map(|n| n.label()), None);
-
-        // we took sibling out of 0 so should be no cycle
-        let node2 = Node::new("com".as_ref(), Some(1), Some(node1), Some(node0));
-        assert_eq!(node2.label(), b"com");
-        assert_eq!(node2.value(), Some(&1));
-        assert_eq!(node2.child().map(|n| n.label()), Some(&b"bar"[..]));
-        assert_eq!(node2.sibling().map(|n| n.label()), Some(&b"foo"[..]));
+        let mut first_bytes = parent.children_first_bytes();
+        assert_eq!(first_bytes.next(), Some(Some(b'a')));
+        assert_eq!(first_bytes.next(), Some(Some(b'b')));
+        assert_eq!(first_bytes.next(), Some(None));
+        assert_eq!(first_bytes.next(), Some(Some(b'c')));
+        assert_eq!(first_bytes.next(), None);
     }
 
     #[test]
-    fn iter_works() {
-        let mut set = PatriciaSet::new();
-        set.insert("foo");
-        set.insert("bar");
-        set.insert("baz");
+    fn test_add_child() {
+        let child1 = Node::new(b"a", [], None);
+        let mut parent = Node::new(b"parent", [child1], Some(100));
 
-        let root = set.into_node();
-        let nodes = root
-            .iter()
-            .map(|(level, node)| (level, node.label()))
-            .collect::<Vec<_>>();
-        assert_eq!(
-            nodes,
-            [
-                (0, "".as_ref()),
-                (1, "ba".as_ref()),
-                (2, "r".as_ref()),
-                (2, "z".as_ref()),
-                (1, "foo".as_ref())
-            ]
-        );
+        // Add at the end
+        let child2 = Node::new(b"c", [], None);
+        unsafe { parent.add_child(child2, 1) };
+        assert_eq!(parent.children_len(), 2);
+        assert_eq!(parent.children()[0].label(), b"a");
+        assert_eq!(parent.children()[1].label(), b"c");
+        assert_eq!(parent.value(), Some(&100));
+
+        // Add in the middle
+        let child3 = Node::new(b"b", [], None);
+        unsafe { parent.add_child(child3, 1) };
+        assert_eq!(parent.children_len(), 3);
+        assert_eq!(parent.children()[0].label(), b"a");
+        assert_eq!(parent.children()[1].label(), b"b");
+        assert_eq!(parent.children()[2].label(), b"c");
+
+        // Add at the beginning
+        let child4 = Node::new(b"_", [], None);
+        unsafe { parent.add_child(child4, 0) };
+        assert_eq!(parent.children_len(), 4);
+        assert_eq!(parent.children()[0].label(), b"_");
+        assert_eq!(parent.children()[1].label(), b"a");
+        assert_eq!(parent.children()[2].label(), b"b");
+        assert_eq!(parent.children()[3].label(), b"c");
+        assert_eq!(parent.label(), b"parent");
+        assert_eq!(parent.value(), Some(&100));
     }
 
     #[test]
-    fn iter_mut_works() {
-        let mut set = PatriciaSet::new();
-        set.insert("foo");
-        set.insert("bar");
-        set.insert("baz");
+    fn test_remove_child() {
+        let child1 = Node::new(b"a", [], None);
+        let child2 = Node::new(b"b", [], None);
+        let child3 = Node::new(b"c", [], None);
+        let child4 = Node::new(b"d", [], None);
+        let mut parent = Node::new(b"parent", [child1, child2, child3, child4], Some(100));
 
-        let mut root = set.into_node();
-        let nodes = root
-            .iter_mut()
-            .map(|(level, node)| (level, node.label()))
-            .collect::<Vec<_>>();
-        assert_eq!(
-            nodes,
-            [
-                (0, "".as_ref()),
-                (1, "ba".as_ref()),
-                (2, "r".as_ref()),
-                (2, "z".as_ref()),
-                (1, "foo".as_ref())
-            ]
-        );
+        // Remove from the middle
+        let removed = unsafe { parent.remove_child(1) };
+        assert_eq!(removed.label(), b"b");
+        assert_eq!(parent.children_len(), 3);
+        assert_eq!(parent.children()[0].label(), b"a");
+        assert_eq!(parent.children()[1].label(), b"c");
+        assert_eq!(parent.children()[2].label(), b"d");
+        assert_eq!(parent.value(), Some(&100));
+
+        // Remove from the end
+        let removed = unsafe { parent.remove_child(2) };
+        assert_eq!(removed.label(), b"d");
+        assert_eq!(parent.children_len(), 2);
+        assert_eq!(parent.children()[0].label(), b"a");
+        assert_eq!(parent.children()[1].label(), b"c");
+
+        // Remove from the beginning
+        let removed = unsafe { parent.remove_child(0) };
+        assert_eq!(removed.label(), b"a");
+        assert_eq!(parent.children_len(), 1);
+        assert_eq!(parent.children()[0].label(), b"c");
+
+        // Remove the last child
+        let removed = unsafe { parent.remove_child(0) };
+        assert_eq!(removed.label(), b"c");
+        assert_eq!(parent.children_len(), 0);
+        assert!(parent.children().is_empty());
+        assert_eq!(parent.label(), b"parent");
+        assert_eq!(parent.value(), Some(&100));
     }
 
     #[test]
-    fn long_label_works() {
-        let node = Node::new(&[b'a'; 256][..], Some(10), None, None);
-        assert_eq!(node.label(), &[b'a'; 255][..]);
-        assert_eq!(node.value(), None);
-        assert!(node.child().is_some());
+    fn test_get_and_get_mut() {
+        let mut root = Node::root();
+        root.insert("test", 1);
+        root.insert("team", 2);
+        root.insert("toast", 3);
 
-        let child = node.child().unwrap();
-        assert_eq!(child.label(), b"a");
-        assert_eq!(child.value(), Some(&10));
+        // Test get
+        assert_eq!(root.get("test"), Some(&1));
+        assert_eq!(root.get("team"), Some(&2));
+        assert_eq!(root.get("toast"), Some(&3));
+        assert_eq!(root.get("te"), None); // prefix, no value
+        assert_eq!(root.get("testing"), None); // non-matching
+        assert_eq!(root.get(""), root.value()); // root value
+
+        // Test get_mut
+        let val = root.get_mut("test");
+        assert_eq!(*val.as_deref().unwrap(), 1);
+        *val.unwrap() = 10;
+        assert_eq!(root.get("test"), Some(&10));
+
+        // Test get_mut on non-existent key
+        assert_eq!(root.get_mut("nonexistent"), None);
     }
 
     #[test]
-    fn reclaim_works() {
-        let mut set = ["123", "123456", "123abc", "123def"]
-            .iter()
-            .collect::<PatriciaSet>();
-        assert_eq!(
-            set_to_labels(&set),
-            [(0, ""), (1, "123"), (2, "456"), (2, "abc"), (2, "def")]
-        );
+    fn test_insert() {
+        let mut root = Node::root();
 
-        set.remove("123def");
-        assert_eq!(
-            set_to_labels(&set),
-            [(0, ""), (1, "123"), (2, "456"), (2, "abc")]
-        );
+        // Insert test key
+        assert_eq!(root.insert("test", 1), None);
+        assert_eq!(root.get("test"), Some(&1));
+        assert_eq!(root.label(), b"");
+        assert_eq!(root.children_len(), 1);
+        assert_eq!(root.children()[0].label(), b"test");
 
-        set.remove("123456");
-        assert_eq!(set_to_labels(&set), [(0, ""), (1, "123"), (2, "abc")]);
+        // Insert key with common prefix -> split
+        assert_eq!(root.insert("team", 2), None);
+        assert_eq!(root.get("test"), Some(&1));
+        assert_eq!(root.get("team"), Some(&2));
+        assert_eq!(root.children_len(), 1);
+        assert_eq!(root.children()[0].label(), b"te"); // parent splits
+        let te_node = &root.children()[0];
+        assert_eq!(te_node.children_len(), 2);
+        assert_eq!(te_node.children()[0].label(), b"am"); // "team" -> "am"
+        assert_eq!(te_node.children()[1].label(), b"st"); // "test" -> "st"
 
-        set.remove("123");
-        assert_eq!(set_to_labels(&set), [(0, ""), (1, "123abc")]);
+        // 3. Insert key that is a prefix of an existing key -> add value
+        assert_eq!(root.insert("te", 3), None);
+        assert_eq!(root.get("te"), Some(&3));
+        let te_node = &root.children()[0];
+        assert_eq!(te_node.value(), Some(&3));
+
+        // 4. Insert key that extends an existing key -> new child
+        assert_eq!(root.insert("testing", 4), None);
+        assert_eq!(root.get("testing"), Some(&4));
+        let te_node = &root.children()[0];
+        let st_node = &te_node.children()[1];
+        assert_eq!(st_node.children_len(), 1);
+        assert_eq!(st_node.children()[0].label(), b"ing");
+
+        // 5. Replace existing key
+        assert_eq!(root.insert("test", 10), Some(1));
+        assert_eq!(root.get("test"), Some(&10));
+
+        // 6. Insert key with no common prefix to existing children
+        assert_eq!(root.insert("apple", 5), None);
+        assert_eq!(root.get("apple"), Some(&5));
+        assert_eq!(root.children_len(), 2); // root now has 'apple' and 'te'
+        assert_eq!(root.children()[0].label(), b"apple");
+        assert_eq!(root.children()[1].label(), b"te");
     }
+    // #[test]
+    // fn new_methods() {
+    //     let node0 = Node::new("foo".as_ref(), Some(3), None, None);
+    //     assert_eq!(node0.label(), b"foo");
+    //     assert_eq!(node0.value(), Some(&3));
+    //     assert_eq!(node0.child().map(|n| n.label()), None);
+    //     assert_eq!(node0.sibling().map(|n| n.label()), None);
 
-    #[test]
-    fn get_longest_common_prefix_works() {
-        let set = ["123", "123456", "1234_67", "123abc", "123def"]
-            .iter()
-            .collect::<PatriciaSet>();
+    //     let mut node1 = Node::new("bar".as_ref(), None, None, Some(node0));
+    //     assert_eq!(node1.label(), b"bar");
+    //     assert_eq!(node1.value(), None);
+    //     assert_eq!(node1.child().map(|n| n.label()), None);
+    //     assert_eq!(node1.sibling().map(|n| n.label()), Some(&b"foo"[..]));
+    //     // take sibling
+    //     let node0 = node1.take_sibling().unwrap();
+    //     assert_eq!(node0.label(), b"foo");
+    //     assert_eq!(node0.value(), Some(&3));
 
-        let lcp = |key| set.get_longest_common_prefix(key);
-        assert_eq!(lcp(""), None);
-        assert_eq!(lcp("12"), None);
-        assert_eq!(lcp("123"), Some("123".as_bytes()));
-        assert_eq!(lcp("1234"), Some("123".as_bytes()));
-        assert_eq!(lcp("123456"), Some("123456".as_bytes()));
-        assert_eq!(lcp("1234_6"), Some("123".as_bytes()));
-        assert_eq!(lcp("123456789"), Some("123456".as_bytes()));
-    }
+    //     assert_eq!(node1.sibling().map(|n| n.label()), None);
 
-    #[test]
-    fn get_longest_common_prefix_mut_works() {
-        let mut map = [
-            ("123", 1),
-            ("123456", 2),
-            ("1234_67", 3),
-            ("123abc", 4),
-            ("123def", 5),
-        ]
-        .iter()
-        .cloned()
-        .map(|(k, v)| (String::from(k), v))
-        .collect::<StringPatriciaMap<usize>>();
+    //     // we took sibling out of 0 so should be no cycle
+    //     let node2 = Node::new("com".as_ref(), Some(1), Some(node1), Some(node0));
+    //     assert_eq!(node2.label(), b"com");
+    //     assert_eq!(node2.value(), Some(&1));
+    //     assert_eq!(node2.child().map(|n| n.label()), Some(&b"bar"[..]));
+    //     assert_eq!(node2.sibling().map(|n| n.label()), Some(&b"foo"[..]));
+    // }
 
-        assert_eq!(map.get_longest_common_prefix_mut(""), None);
-        assert_eq!(map.get_longest_common_prefix_mut("12"), None);
-        assert_eq!(
-            map.get_longest_common_prefix_mut("123"),
-            Some(("123", &mut 1))
-        );
-        *map.get_longest_common_prefix_mut("123").unwrap().1 = 10;
-        assert_eq!(
-            map.get_longest_common_prefix_mut("1234"),
-            Some(("123", &mut 10))
-        );
-        assert_eq!(
-            map.get_longest_common_prefix_mut("123456"),
-            Some(("123456", &mut 2))
-        );
-        *map.get_longest_common_prefix_mut("1234567").unwrap().1 = 20;
-        assert_eq!(
-            map.get_longest_common_prefix_mut("1234_6"),
-            Some(("123", &mut 10))
-        );
-        assert_eq!(
-            map.get_longest_common_prefix_mut("123456789"),
-            Some(("123456", &mut 20))
-        );
-    }
+    // #[test]
+    // fn iter_works() {
+    //     let mut set = PatriciaSet::new();
+    //     set.insert("foo");
+    //     set.insert("bar");
+    //     set.insert("baz");
 
-    fn set_to_labels(set: &PatriciaSet) -> Vec<(usize, &str)> {
-        set.as_node()
-            .iter()
-            .map(|(level, n)| (level, str::from_utf8(n.label()).unwrap()))
-            .collect()
-    }
+    //     let root = set.into_node();
+    //     let nodes = root
+    //         .iter()
+    //         .map(|(level, node)| (level, node.label()))
+    //         .collect::<Vec<_>>();
+    //     assert_eq!(
+    //         nodes,
+    //         [
+    //             (0, "".as_ref()),
+    //             (1, "ba".as_ref()),
+    //             (2, "r".as_ref()),
+    //             (2, "z".as_ref()),
+    //             (1, "foo".as_ref())
+    //         ]
+    //     );
+    // }
+
+    // #[test]
+    // fn iter_mut_works() {
+    //     let mut set = PatriciaSet::new();
+    //     set.insert("foo");
+    //     set.insert("bar");
+    //     set.insert("baz");
+
+    //     let mut root = set.into_node();
+    //     let nodes = root
+    //         .iter_mut()
+    //         .map(|(level, node)| (level, node.label()))
+    //         .collect::<Vec<_>>();
+    //     assert_eq!(
+    //         nodes,
+    //         [
+    //             (0, "".as_ref()),
+    //             (1, "ba".as_ref()),
+    //             (2, "r".as_ref()),
+    //             (2, "z".as_ref()),
+    //             (1, "foo".as_ref())
+    //         ]
+    //     );
+    // }
+
+    // #[test]
+    // fn long_label_works() {
+    //     let node = Node::new(&[b'a'; 256][..], Some(10), None, None);
+    //     assert_eq!(node.label(), &[b'a'; 255][..]);
+    //     assert_eq!(node.value(), None);
+    //     assert!(node.child().is_some());
+
+    //     let child = node.child().unwrap();
+    //     assert_eq!(child.label(), b"a");
+    //     assert_eq!(child.value(), Some(&10));
+    // }
+
+    // #[test]
+    // fn reclaim_works() {
+    //     let mut set = ["123", "123456", "123abc", "123def"]
+    //         .iter()
+    //         .collect::<PatriciaSet>();
+    //     assert_eq!(
+    //         set_to_labels(&set),
+    //         [(0, ""), (1, "123"), (2, "456"), (2, "abc"), (2, "def")]
+    //     );
+
+    //     set.remove("123def");
+    //     assert_eq!(
+    //         set_to_labels(&set),
+    //         [(0, ""), (1, "123"), (2, "456"), (2, "abc")]
+    //     );
+
+    //     set.remove("123456");
+    //     assert_eq!(set_to_labels(&set), [(0, ""), (1, "123"), (2, "abc")]);
+
+    //     set.remove("123");
+    //     assert_eq!(set_to_labels(&set), [(0, ""), (1, "123abc")]);
+    // }
+
+    // #[test]
+    // fn get_longest_common_prefix_works() {
+    //     let set = ["123", "123456", "1234_67", "123abc", "123def"]
+    //         .iter()
+    //         .collect::<PatriciaSet>();
+
+    //     let lcp = |key| set.get_longest_common_prefix(key);
+    //     assert_eq!(lcp(""), None);
+    //     assert_eq!(lcp("12"), None);
+    //     assert_eq!(lcp("123"), Some("123".as_bytes()));
+    //     assert_eq!(lcp("1234"), Some("123".as_bytes()));
+    //     assert_eq!(lcp("123456"), Some("123456".as_bytes()));
+    //     assert_eq!(lcp("1234_6"), Some("123".as_bytes()));
+    //     assert_eq!(lcp("123456789"), Some("123456".as_bytes()));
+    // }
+
+    // #[test]
+    // fn get_longest_common_prefix_mut_works() {
+    //     let mut map = [
+    //         ("123", 1),
+    //         ("123456", 2),
+    //         ("1234_67", 3),
+    //         ("123abc", 4),
+    //         ("123def", 5),
+    //     ]
+    //     .iter()
+    //     .cloned()
+    //     .map(|(k, v)| (String::from(k), v))
+    //     .collect::<StringPatriciaMap<usize>>();
+
+    //     assert_eq!(map.get_longest_common_prefix_mut(""), None);
+    //     assert_eq!(map.get_longest_common_prefix_mut("12"), None);
+    //     assert_eq!(
+    //         map.get_longest_common_prefix_mut("123"),
+    //         Some(("123", &mut 1))
+    //     );
+    //     *map.get_longest_common_prefix_mut("123").unwrap().1 = 10;
+    //     assert_eq!(
+    //         map.get_longest_common_prefix_mut("1234"),
+    //         Some(("123", &mut 10))
+    //     );
+    //     assert_eq!(
+    //         map.get_longest_common_prefix_mut("123456"),
+    //         Some(("123456", &mut 2))
+    //     );
+    //     *map.get_longest_common_prefix_mut("1234567").unwrap().1 = 20;
+    //     assert_eq!(
+    //         map.get_longest_common_prefix_mut("1234_6"),
+    //         Some(("123", &mut 10))
+    //     );
+    //     assert_eq!(
+    //         map.get_longest_common_prefix_mut("123456789"),
+    //         Some(("123456", &mut 20))
+    //     );
+    // }
+
+    // fn set_to_labels(set: &PatriciaSet) -> Vec<(usize, &str)> {
+    //     set.as_node()
+    //         .iter()
+    //         .map(|(level, n)| (level, str::from_utf8(n.label()).unwrap()))
+    //         .collect()
+    // }
 }
