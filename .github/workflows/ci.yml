@@ -49,7 +49,7 @@ jobs:
       - name: Checkout sources
         uses: actions/checkout@v5
       - run: rustup update ${{ matrix.toolchain }}
-      - run: cargo miri test --all-features --all
+      - run: cargo +nightly miri test --all-features --all
 
   lints:
     name: Lints
