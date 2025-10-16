@@ -48,8 +48,14 @@ jobs:
     steps:
       - name: Checkout sources
         uses: actions/checkout@v5
-      - run: rustup update ${{ matrix.toolchain }}
-      - run: cargo +nightly miri test --all-features --all
+      - run: |
+          rustup update ${{ matrix.toolchain }}
+          rustup toolchain install ${{ matrix.toolchain }} --component miri
+          rustup override set ${{ matrix.toolchain }}
+
+      - name: Run Miri tests
+        run: cargo miri test
+      - run: cargo +nightly ${{ matrix.toolchain }} test --all-features --all
 
   lints:
     name: Lints
