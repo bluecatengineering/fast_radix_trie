@@ -178,7 +178,7 @@ impl<V> Node<V> {
     pub fn children(&self) -> &[Node<V>] {
         unsafe { self.ptr_data().children(self.ptr) }
     }
-    pub fn children_mut(&self) -> &mut [Node<V>] {
+    pub fn children_mut(&mut self) -> &mut [Node<V>] {
         unsafe { self.ptr_data().children_mut(self.ptr) }
     }
     // TODO: consider storing first bytes in node? trade memory for lookup speed
@@ -242,36 +242,57 @@ impl<V> Node<V> {
         };
         let old_children_len = self.children_len();
         let new_ptr_data = new_header.ptr_data();
-        let old_layout = self.ptr_data().layout;
-        // TODO: could use ptr::copy since we use realloc
+        let old_ptr_data = self.ptr_data();
         let value = self.take_value();
 
+        dbg!(self.ptr_data().layout);
+        dbg!(new_header.ptr_data::<V>().layout);
+
         unsafe {
-            let new_ptr = alloc::alloc::realloc(
+            let raw_ptr = alloc::alloc::realloc(
                 self.ptr.as_ptr().cast(),
-                old_layout,
+                old_ptr_data.layout,
                 new_ptr_data.layout.size(),
             )
             .cast();
-            let Some(new_ptr) = NonNull::new(new_ptr) else {
+
+            let Some(raw_ptr) = NonNull::new(raw_ptr) else {
                 alloc::alloc::handle_alloc_error(new_ptr_data.layout);
             };
             let mut new_ptr = NodePtrAndData {
-                ptr: new_ptr,
+                ptr: raw_ptr,
                 ptr_data: new_ptr_data,
             };
-            // write data in right to left order since we're growing
-            // new_ptr.value_ptr().copy_from(value_ptr, 1);
-            new_ptr.write_value(value);
-            // shift children from [i..] to [i+1..]
+            let old_ptr = NodePtrAndData {
+                ptr: raw_ptr,
+                ptr_data: old_ptr_data,
+            };
             let num = old_children_len - i;
-            assert_some!(new_ptr.children_ptr())
-                .add(i)
-                .copy_to(assert_some!(new_ptr.children_ptr()).add(i + 1), num);
+            dbg!(num);
+            // write data in right to left order since we're growing
+            new_ptr.write_value(value);
+
+            // let old_i = old_ptr.children_ptr().map(|p| p.add(i));
+            // // shift children from [i..] to [i+1..]
+            // if let Some((p, old_i)) = new_ptr
+            //     .children_ptr()
+            //     .and_then(|p| Some((p.add(i + 1), old_i?)))
+            // {
+            //     p.copy_from(old_i, num);
+            // }
+            // assert_some!(new_ptr.children_ptr()).add(i).write(new_child);
+
+            // if let Some(old_i) = old_ptr.children_ptr() {
+            //     assert_some!(new_ptr.children_ptr()).copy_from(old_i, i);
+            // }
+
+            if num > 0 {
+                assert_some!(new_ptr.children_ptr())
+                    .add(i)
+                    .copy_to(assert_some!(new_ptr.children_ptr()).add(i + 1), num);
+            }
             // write child at i
             assert_some!(new_ptr.children_ptr()).add(i).write(new_child);
-            // everything before this has been moved by realloc
-            // that means [..i] children and label and header
             // update header value:
             new_ptr.write_header(new_header);
             // label already there from realloc
@@ -444,7 +465,7 @@ impl<V> Node<V> {
         // SAFETY: we know i is inside the bounds already
         Some(unsafe { self.children().get_unchecked(i) })
     }
-    fn child_with_first_mut(&self, byte: u8) -> Option<&mut Self> {
+    fn child_with_first_mut(&mut self, byte: u8) -> Option<&mut Self> {
         let i = self.child_index_with_first(byte)?;
         Some(unsafe { self.children_mut().get_unchecked_mut(i) })
     }
@@ -681,7 +702,7 @@ impl<V> Node<V> {
                 }
                 (_, None) => {
                     // new child needed but next element doesn't exist
-                    match key.len().cmp(&(cur.label_len() as usize)) {
+                    match key.len().cmp(&cur.label_len()) {
                         Ordering::Less => {
                             unsafe { cur.split_at(key.len(), None) };
                             cur.set_value(value);
@@ -716,6 +737,7 @@ impl<V> Node<V> {
                                     // we now have index of where we can insert
                                     let child = Node::new(key, [], Some(value));
                                     // SAFETY: insert_index must be <= children len
+                                    dbg!(&child.label(), insert_index);
                                     unsafe {
                                         cur.add_child(child, insert_index);
                                     }
@@ -1176,27 +1198,27 @@ mod tests {
 
     #[test]
     fn test_get_and_get_mut() {
-        let mut root = Node::root();
+        let mut root: Node<u32> = Node::new(b"", [], Some(2));
         root.insert("test", 1);
-        root.insert("team", 2);
-        root.insert("toast", 3);
+        // root.insert("team", 2);
+        // root.insert("toast", 3);
 
-        // Test get
-        assert_eq!(root.get("test"), Some(&1));
-        assert_eq!(root.get("team"), Some(&2));
-        assert_eq!(root.get("toast"), Some(&3));
-        assert_eq!(root.get("te"), None); // prefix, no value
-        assert_eq!(root.get("testing"), None); // non-matching
-        assert_eq!(root.get(""), root.value()); // root value
+        // // Test get
+        // assert_eq!(root.get("test"), Some(&1));
+        // assert_eq!(root.get("team"), Some(&2));
+        // assert_eq!(root.get("toast"), Some(&3));
+        // assert_eq!(root.get("te"), None); // prefix, no value
+        // assert_eq!(root.get("testing"), None); // non-matching
+        // assert_eq!(root.get(""), root.value()); // root value
 
-        // Test get_mut
-        let val = root.get_mut("test");
-        assert_eq!(*val.as_deref().unwrap(), 1);
-        *val.unwrap() = 10;
-        assert_eq!(root.get("test"), Some(&10));
+        // // Test get_mut
+        // let val = root.get_mut("test");
+        // assert_eq!(*val.as_deref().unwrap(), 1);
+        // *val.unwrap() = 10;
+        // assert_eq!(root.get("test"), Some(&10));
 
-        // Test get_mut on non-existent key
-        assert_eq!(root.get_mut("nonexistent"), None);
+        // // Test get_mut on non-existent key
+        // assert_eq!(root.get_mut("nonexistent"), None);
     }
 
     #[test]

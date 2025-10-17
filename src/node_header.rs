@@ -147,6 +147,13 @@ impl NodeHeader {
             (layout, None)
         };
 
+        // let (layout, children_offset) = {
+        //     let (new_layout, offset) = extend!(layout.extend(extend!(Layout::array::<Node<V>>(
+        //         self.children_len as usize
+        //     ))));
+        //     (new_layout, Some(offset))
+        // };
+
         let (layout, value_offset) = extend!(layout.extend(Layout::new::<Option<V>>()));
 
         // let child_offset = if self.flags.contains(Flags::CHILD_ALLOCATED) {
@@ -236,7 +243,7 @@ impl<V> PtrData<V> {
         if let Some(ptr) = unsafe { self.children_ptr(header_ptr) } {
             unsafe {
                 let children_len = (*header_ptr.as_ptr()).children_len as usize;
-                slice::from_raw_parts(ptr.as_ptr(), children_len as usize)
+                slice::from_raw_parts(ptr.as_ptr(), children_len)
             }
         } else {
             &[]
@@ -248,11 +255,8 @@ impl<V> PtrData<V> {
         &self,
         header_ptr: NonNull<NodeHeader>,
     ) -> Option<NonNull<Node<V>>> {
-        if let Some(offset) = self.children_offset {
-            unsafe { Some(header_ptr.byte_add(offset).cast::<Node<V>>()) }
-        } else {
-            None
-        }
+        self.children_offset
+            .map(|offset| unsafe { header_ptr.byte_add(offset).cast::<Node<V>>() })
     }
 
     #[inline]
@@ -263,7 +267,7 @@ impl<V> PtrData<V> {
         if let Some(ptr) = unsafe { self.children_ptr(header_ptr) } {
             unsafe {
                 let children_len = (*header_ptr.as_ptr()).children_len as usize;
-                slice::from_raw_parts_mut(ptr.as_ptr(), children_len as usize)
+                slice::from_raw_parts_mut(ptr.as_ptr(), children_len)
             }
         } else {
             &mut []
