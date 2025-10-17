@@ -130,6 +130,8 @@ impl<V> Node<V> {
             children_len: children.len() as u8,
         };
         let mut ptr = header.ptr_data().allocate();
+        dbg!(ptr.ptr_data.layout);
+        dbg!(label);
         unsafe {
             ptr.write_header(header);
             ptr.write_label(label);
@@ -247,6 +249,7 @@ impl<V> Node<V> {
 
         dbg!(self.ptr_data().layout);
         dbg!(new_header.ptr_data::<V>().layout);
+        dbg!(mem::size_of_val(&self));
 
         unsafe {
             let raw_ptr = alloc::alloc::realloc(
@@ -1200,25 +1203,25 @@ mod tests {
     fn test_get_and_get_mut() {
         let mut root: Node<u32> = Node::new(b"", [], Some(2));
         root.insert("test", 1);
-        // root.insert("team", 2);
-        // root.insert("toast", 3);
+        root.insert("team", 2);
+        root.insert("toast", 3);
 
-        // // Test get
-        // assert_eq!(root.get("test"), Some(&1));
-        // assert_eq!(root.get("team"), Some(&2));
-        // assert_eq!(root.get("toast"), Some(&3));
-        // assert_eq!(root.get("te"), None); // prefix, no value
-        // assert_eq!(root.get("testing"), None); // non-matching
-        // assert_eq!(root.get(""), root.value()); // root value
+        // Test get
+        assert_eq!(root.get("test"), Some(&1));
+        assert_eq!(root.get("team"), Some(&2));
+        assert_eq!(root.get("toast"), Some(&3));
+        assert_eq!(root.get("te"), None); // prefix, no value
+        assert_eq!(root.get("testing"), None); // non-matching
+        assert_eq!(root.get(""), root.value()); // root value
 
-        // // Test get_mut
-        // let val = root.get_mut("test");
-        // assert_eq!(*val.as_deref().unwrap(), 1);
-        // *val.unwrap() = 10;
-        // assert_eq!(root.get("test"), Some(&10));
+        // Test get_mut
+        let val = root.get_mut("test");
+        assert_eq!(*val.as_deref().unwrap(), 1);
+        *val.unwrap() = 10;
+        assert_eq!(root.get("test"), Some(&10));
 
-        // // Test get_mut on non-existent key
-        // assert_eq!(root.get_mut("nonexistent"), None);
+        // Test get_mut on non-existent key
+        assert_eq!(root.get_mut("nonexistent"), None);
     }
 
     #[test]

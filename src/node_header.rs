@@ -144,15 +144,19 @@ impl NodeHeader {
             ))));
             (new_layout, Some(offset))
         } else {
-            (layout, None)
+            // because we use re-alloc we must always include this in layout because it affects the alignment
+            // there are basically two options:
+            // - have nodes with different alignments and optional offsets using the flags BUT
+            // we must never use realloc because the alignment could change
+            // - keep the alignment consistent and use realloc
+            //
+            // The first will minimize memory usage at the cost of slower mutations
+            // the second will make mutations faster but use more memory because of potentially larger
+            // padding/always allocated parts of layout (like the value)
+            let (new_layout, _offset) =
+                extend!(layout.extend(extend!(Layout::array::<Node<V>>(0))));
+            (new_layout, None)
         };
-
-        // let (layout, children_offset) = {
-        //     let (new_layout, offset) = extend!(layout.extend(extend!(Layout::array::<Node<V>>(
-        //         self.children_len as usize
-        //     ))));
-        //     (new_layout, Some(offset))
-        // };
 
         let (layout, value_offset) = extend!(layout.extend(Layout::new::<Option<V>>()));
 
