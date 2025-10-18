@@ -1,4 +1,5 @@
-use patricia_tree::{PatriciaMap, PatriciaSet};
+// use patricia_tree::{PatriciaMap, PatriciaSet};
+use patricia_tree::node::Node;
 use std::{
     collections::{BTreeSet, HashSet},
     io::BufRead,
@@ -10,14 +11,14 @@ fn main() -> noargs::Result<()> {
 
     let kind = noargs::opt("kind")
         .doc("Data structure kindt")
-        .ty("patricia | hash | btree | count")
+        .ty("patricia | hash | btree | count | node")
         .default("patricia")
         .take(&mut args)
         .then(|a| {
             let value = a.value();
             match value {
-                "patricia" | "hash" | "btree" | "count" => Ok(value.to_string()),
-                _ => Err("must be one of: patricia, hash, btree, count"),
+                "patricia" | "hash" | "btree" | "count" | "node" => Ok(value.to_string()),
+                _ => Err("must be one of: patricia, hash, btree, count, node"),
             }
         })?;
     if let Some(help) = args.finish()? {
@@ -26,19 +27,26 @@ fn main() -> noargs::Result<()> {
     }
 
     match kind.as_str() {
-        "patricia_map" => {
-            let mut set = PatriciaMap::new();
+        // "patricia_map" => {
+        //     let mut set = PatriciaMap::new();
+        //     each_line(|line| {
+        //         set.insert(line, rand::random::<u64>());
+        //     });
+        //     println!("# LINES: {}", set.len());
+        // }
+        // "patricia" => {
+        //     let mut set = PatriciaSet::new();
+        //     each_line(|line| {
+        //         set.insert(line);
+        //     });
+        //     println!("# LINES: {}", set.len());
+        // }
+        "node" => {
+            let mut set = Node::root();
             each_line(|line| {
-                set.insert(line, rand::random::<u64>());
+                set.insert(line.as_str(), rand::random::<u64>());
             });
-            println!("# LINES: {}", set.len());
-        }
-        "patricia" => {
-            let mut set = PatriciaSet::new();
-            each_line(|line| {
-                set.insert(line);
-            });
-            println!("# LINES: {}", set.len());
+            // println!("# LINES: {}", set.len());
         }
         "hash" => {
             let mut set = HashSet::new();

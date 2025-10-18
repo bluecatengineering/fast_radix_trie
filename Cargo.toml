@@ -1,30 +1,32 @@
 [package]
-name = "patricia_tree"
-version = "0.10.1"
-authors = ["Takeru Ohta <phjgt308@gmail.com>"]
-description = "Memory-efficient data structures based on patricia tree"
-homepage = "https://github.com/sile/patricia_tree"
-repository = "https://github.com/sile/patricia_tree"
+name = "radix_trie"
+version = "0.1.0"
+authors = [
+	"Takeru Ohta <phjgt308@gmail.com>",
+	"Evan Cameron <cameron.evan@gmail.com>",
+]
+description = "Memory-efficient data structures based on radix tree"
+homepage = "https://github.com/bluecatengineering/radix_trie"
+repository = "https://github.com/bluecatengineering/radix_trie"
 readme = "README.md"
-keywords = ["patricia", "radix", "trie"]
+keywords = ["radix", "trie"]
 categories = ["data-structures", "no-std"]
 license = "MIT"
 edition = "2024"
 rust-version = "1.85.0"
 
 [dependencies]
-serde = { version = "1", optional = true }
 memchr = { version = "2", default-features = false }
 
 [dev-dependencies]
 criterion = "0.7.0"
 noargs = "0.4.1"
 rand = "0.9"
-serde_json = { version = "1" }
 
 [features]
-default = ["std"]
+default = ["std", "realloc"]
 std = []
+realloc = []
 
 [package.metadata.docs.rs]
 all-features = true

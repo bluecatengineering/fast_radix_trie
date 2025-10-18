@@ -1,7 +1,7 @@
 //! A node which represents a subtree of a patricia tree.
 use crate::{
     BorrowedBytes, Bytes,
-    node_header::{NodeHeader, NodePtrAndData, PtrData},
+    opt::node_header::{Flags, NodeHeader, NodePtrAndData, PtrData},
 };
 use alloc::vec::Vec;
 use core::{
@@ -30,13 +30,14 @@ const MAX_LABEL_LEN: usize = u8::MAX as usize;
 /// Usually it is recommended to use more high level data structures (e.g., `PatriciaTree`).
 #[derive(Debug)]
 pub struct Node<V> {
-    // alignment: will be no less than 8 on x86-64 because NonNull<V> is 8 bytes
-    // if V is wider, then the alignment will be bigger
+    // alignment: will be 2 on nodes with no children and/or no value
+    // if it has children then 8 on x86-64 and more if V is wider
     // layout:
+    //   - flags: u8
     //   - label_len: u8
     //   - label: [u8; label_len]
-    //   - children: [NonNull<Node<V>>; children_len]
-    //   - value: Option<V>
+    //   - children: [NonNull<Node<V>>; children_len] -- optionally allocated
+    //   - value: V -- optionally allocated
     pub(crate) ptr: ptr::NonNull<NodeHeader>,
     pub(crate) _marker: PhantomData<V>,
 }
@@ -62,8 +63,13 @@ impl<V> Node<V> {
             label.len() <= MAX_LABEL_LEN,
             "nodes must have a label len <= 255"
         );
+        let mut flags = Flags::empty();
+        if value.is_some() {
+            flags.insert(Flags::VALUE_ALLOCATED | Flags::VALUE_INITIALIZED);
+        }
 
         let header = NodeHeader {
+            flags,
             label_len: label.len() as u8,
             children_len: children.len() as u8,
         };
@@ -72,7 +78,9 @@ impl<V> Node<V> {
             ptr.write_header(header);
             ptr.write_label(label);
             ptr.write_children(children);
-            ptr.write_value(value);
+            if let Some(val) = value {
+                ptr.write_value(val);
+            }
             ptr.assume_init()
         }
     }
@@ -82,7 +90,6 @@ impl<V> Node<V> {
         unsafe { PtrData::<V>::label(self.ptr) }
     }
 
-    #[cfg(feature = "serde")]
     pub(crate) fn label_mut(&mut self) -> &mut [u8] {
         unsafe { PtrData::<V>::label_mut(self.ptr) }
     }
@@ -105,12 +112,18 @@ impl<V> Node<V> {
 
     /// Returns the reference to the value of this node.
     pub fn value(&self) -> Option<&V> {
-        unsafe { (self.ptr_data().value_ptr(self.ptr)).as_ref() }.as_ref()
+        if let Some(val) = unsafe { self.ptr_data().value_ptr_init(self.ptr) } {
+            return Some(unsafe { val.as_ref() });
+        }
+        None
     }
 
     /// Returns the mutable reference to the value of this node.
     pub fn value_mut(&mut self) -> Option<&mut V> {
-        unsafe { (self.ptr_data().value_ptr(self.ptr)).as_mut() }.as_mut()
+        if let Some(mut val) = unsafe { self.ptr_data().value_ptr_init(self.ptr) } {
+            return Some(unsafe { val.as_mut() });
+        }
+        None
     }
 
     pub fn children(&self) -> &[Node<V>] {
@@ -126,7 +139,11 @@ impl<V> Node<V> {
 
     /// Returns mutable references to the node itself with its sibling and child
     pub fn as_mut(&mut self) -> NodeMut<'_, V> {
-        let value = unsafe { self.ptr_data().value_ptr(self.ptr).as_mut() }.as_mut();
+        let value = if let Some(mut value) = unsafe { self.ptr_data().value_ptr_init(self.ptr) } {
+            Some(unsafe { value.as_mut() })
+        } else {
+            None
+        };
         let children = unsafe { self.ptr_data().children_mut(self.ptr) };
 
         NodeMut {
@@ -138,12 +155,8 @@ impl<V> Node<V> {
 
     /// Takes the value out of this node.
     pub fn take_value(&mut self) -> Option<V> {
-        unsafe {
-            let ptr = self.ptr_data().value_ptr(self.ptr);
-            ptr.replace(None)
-        }
+        unsafe { self.ptr_data().take_value(self.ptr) }
     }
-
     pub fn take_children(&mut self) -> Option<Vec<Node<V>>> {
         let len = self.children_len();
         if len == 0 {
@@ -169,12 +182,13 @@ impl<V> Node<V> {
     /// node must have children already and i <= len
     unsafe fn add_child(&mut self, new_child: Node<V>, i: usize) {
         debug_assert!(
-            i <= self.children_len(),
+            i <= self.children_len() as usize,
             "child index out of bounds: {i} > {}",
             self.children_len()
         );
 
         let new_header = NodeHeader {
+            flags: self.flags(),
             label_len: self.label_len() as u8,
             children_len: self.children_len() as u8 + 1,
         };
@@ -201,6 +215,10 @@ impl<V> Node<V> {
                 ptr: raw_ptr,
                 ptr_data: new_ptr_data,
             };
+            // let old_ptr = NodePtrAndData {
+            //     ptr: raw_ptr,
+            //     ptr_data: old_ptr_data,
+            // };
             let num = old_children_len - i;
             // write data in right to left order since we're growing
             new_ptr.write_value(value);
@@ -231,7 +249,7 @@ impl<V> Node<V> {
     /// node must have children already
     unsafe fn remove_child(&mut self, i: usize) -> Node<V> {
         debug_assert!(
-            i < self.children_len(),
+            i < self.children_len() as usize,
             "child index out of bounds: {i} >= {}",
             self.children_len()
         );
@@ -255,7 +273,6 @@ impl<V> Node<V> {
         unsafe {
             // get child at i
             let removed_child = assert_some!(old_ptr.children_ptr()).add(i).read();
-            // child.drop_in_place(); // if we want to drop instead of return
 
             let mut new_ptr = NodePtrAndData {
                 ptr: self.ptr,
@@ -289,10 +306,47 @@ impl<V> Node<V> {
 
     /// Sets the value of this node.
     pub fn set_value(&mut self, value: V) {
-        // self.take_value();
-        unsafe {
-            let ptr = self.ptr_data().value_ptr(self.ptr);
-            let _ = ptr.replace(Some(value));
+        self.take_value();
+        if let Some(ptr) = unsafe { self.ptr_data().value_ptr_alloc(self.ptr) } {
+            self.set_flags(Flags::VALUE_INITIALIZED, true);
+            unsafe {
+                ptr.write(value);
+            }
+        } else {
+            let mut new_header = *self.header();
+            new_header
+                .flags
+                .insert(Flags::VALUE_ALLOCATED | Flags::VALUE_INITIALIZED);
+
+            let children_len = self.children_len();
+            let old_ptr_data = self.ptr_data();
+
+            let old_ptr = NodePtrAndData {
+                ptr: self.ptr,
+                ptr_data: old_ptr_data,
+            };
+
+            // allocate space for new node
+            let mut new_ptr = new_header.ptr_data().allocate();
+
+            unsafe {
+                // copy header
+                new_ptr.write_header(new_header);
+                // copy label
+                new_ptr.write_label(self.label());
+                // copy children
+                if let Some(new_child) = new_ptr.children_ptr() {
+                    if let Some(old_child) = old_ptr.children_ptr() {
+                        new_child.copy_from_nonoverlapping(old_child, children_len);
+                    }
+                }
+                // write new value
+                new_ptr.write_value(value);
+                // assign to self
+                self.ptr = new_ptr.assume_init().into_ptr_forget();
+                // dealloc the old node without calling drop on its contents
+                old_ptr.ptr_data.dealloc_forget(old_ptr.ptr);
+            }
         }
     }
 
@@ -635,6 +689,13 @@ impl<V> Node<V> {
                 }
             }
         }
+    }
+
+    pub(crate) fn flags(&self) -> Flags {
+        Flags::from_bits_truncate(self.header().flags.bits())
+    }
+    fn set_flags(&mut self, other: Flags, value: bool) {
+        self.header_mut().flags.set(other, value);
     }
 
     fn label_len(&self) -> usize {

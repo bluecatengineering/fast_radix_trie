@@ -9,63 +9,73 @@ jobs:
     strategy:
       matrix:
         toolchain: [stable, beta, nightly]
+        features:
+          - name: "all"
+            args: "--all-features"
+          - name: "realloc"
+            args: "--no-default-features --features realloc"
+          - name: "no-realloc"
+            args: "--no-default-features"
     steps:
       - name: Checkout sources
         uses: actions/checkout@v5
-      - run: rustup update ${{ matrix.toolchain }}
-      - run: cargo check --all-features --all
-
-  nostd:
-    name: Check no_std
-    runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        toolchain: [stable, beta, nightly]
-    steps:
-      - name: Checkout sources
-        uses: actions/checkout@v5
-      - run: rustup update ${{ matrix.toolchain }}
-      - run: cargo check --no-default-features --features=serde --all
+      - name: Install toolchain
+        run: rustup update ${{ matrix.toolchain }} && rustup default ${{ matrix.toolchain }}
+      - name: Cargo Check (${{ matrix.features.name }})
+        run: cargo check ${{ matrix.features.args }}
 
   test:
-    name: Test Suite
+    name: Test
     runs-on: ubuntu-latest
     strategy:
       matrix:
         toolchain: [stable, beta, nightly]
+        features:
+          - name: "all"
+            args: "--all-features"
+          - name: "realloc"
+            args: "--no-default-features --features realloc"
+          - name: "no-realloc"
+            args: "--no-default-features"
     steps:
       - name: Checkout sources
         uses: actions/checkout@v5
-      - run: rustup update ${{ matrix.toolchain }}
-      - run: cargo test --all-features --all
+      - name: Install toolchain
+        run: rustup update ${{ matrix.toolchain }} && rustup default ${{ matrix.toolchain }}
+      - name: Cargo Test (${{ matrix.features.name }})
+        run: cargo test ${{ matrix.features.args }}
 
   miri:
     name: Miri
     runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        toolchain: [nightly]
     steps:
       - name: Checkout sources
         uses: actions/checkout@v5
-      - run: |
-          rustup update ${{ matrix.toolchain }}
-          rustup toolchain install ${{ matrix.toolchain }} --component miri
-          rustup override set ${{ matrix.toolchain }}
-
-      - name: Run Miri tests
-        run: cargo miri test
-      - run: cargo +nightly ${{ matrix.toolchain }} test --all-features --all
+      - name: Install Miri
+        run: |
+          rustup update nightly
+          rustup toolchain install nightly --component miri
+          rustup override set nightly
+      - name: Run Miri (all features)
+        run: cargo miri test --all-features
+      - name: Run Miri (no-default-features + realloc)
+        run: cargo miri test --no-default-features --features realloc
+      - name: Run Miri (no-default-features)
+        run: cargo miri test --no-default-features
 
   lints:
     name: Lints
     runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        toolchain: [stable, beta, nightly]
     steps:
       - name: Checkout sources
         uses: actions/checkout@v5
-      - run: rustup update ${{ matrix.toolchain }}
-      - run: cargo fmt --all -- --check
-      - run: cargo clippy --all-features --all -- -D warnings
+      - name: Install toolchain
+        run: rustup update stable && rustup default stable
+      - name: Cargo Fmt
+        run: cargo fmt --all -- --check
+      - name: Cargo Clippy (all features)
+        run: cargo clippy --all-features -- -D warnings
+      - name: Cargo Clippy (no-default-features + realloc)
+        run: cargo clippy --no-default-features --features realloc -- -D warnings
+      - name: Cargo Clippy (no-default-features)
+        run: cargo clippy --no-default-features -- -D warnings
