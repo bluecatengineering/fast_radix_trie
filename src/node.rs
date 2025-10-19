@@ -1,28 +1,13 @@
 //! A node which represents a subtree of a patricia tree.
 use crate::{
-    BorrowedBytes, Bytes,
-    node_header::{NodeHeader, NodePtrAndData, PtrData},
+    node_common::{NodeMut, assert_some},
+    node_header::{NodeHeader, NodePtrAndData},
 };
-use alloc::vec::Vec;
 use core::{
-    cmp::Ordering,
     marker::PhantomData,
     mem,
     ptr::{self, NonNull},
 };
-
-macro_rules! assert_some {
-    ($expr:expr) => {
-        if let Some(value) = $expr {
-            value
-        } else {
-            // TODO: change to unreachable?
-            panic!("`{}` must be `Some(..)`", stringify!($expr));
-        }
-    };
-}
-
-const MAX_LABEL_LEN: usize = u8::MAX as usize;
 
 /// A node which represents a subtree of a patricia tree.
 ///
@@ -45,11 +30,6 @@ unsafe impl<V: Send> Send for Node<V> {}
 unsafe impl<V: Sync> Sync for Node<V> {}
 
 impl<V> Node<V> {
-    /// Makes a new node which represents an empty tree.
-    pub fn root() -> Self {
-        Node::new(b"", [], None)
-    }
-
     /// Makes a new node.
     /// SAFETY: - label len must not exceed 255
     ///         - children len must not exceed 255
@@ -59,7 +39,7 @@ impl<V> Node<V> {
             panic!("children_len {} exceeds the max {}", N, u8::MAX);
         }
         assert!(
-            label.len() <= MAX_LABEL_LEN,
+            label.len() <= crate::node_common::MAX_LABEL_LEN,
             "nodes must have a label len <= 255"
         );
 
@@ -77,32 +57,6 @@ impl<V> Node<V> {
         }
     }
 
-    /// Returns the label of this node.
-    pub fn label(&self) -> &[u8] {
-        unsafe { PtrData::<V>::label(self.ptr) }
-    }
-
-    #[cfg(feature = "serde")]
-    pub(crate) fn label_mut(&mut self) -> &mut [u8] {
-        unsafe { PtrData::<V>::label_mut(self.ptr) }
-    }
-
-    /// Returns a reference to the header for this node.
-    #[inline]
-    fn header(&self) -> &NodeHeader {
-        unsafe { self.ptr.as_ref() }
-    }
-
-    #[inline]
-    fn header_mut(&mut self) -> &mut NodeHeader {
-        unsafe { self.ptr.as_mut() }
-    }
-    /// Returns the layout and field offsets for the allocated buffer backing this node.
-    #[inline]
-    fn ptr_data(&self) -> PtrData<V> {
-        self.header().ptr_data()
-    }
-
     /// Returns the reference to the value of this node.
     pub fn value(&self) -> Option<&V> {
         unsafe { (self.ptr_data().value_ptr(self.ptr)).as_ref() }.as_ref()
@@ -111,17 +65,6 @@ impl<V> Node<V> {
     /// Returns the mutable reference to the value of this node.
     pub fn value_mut(&mut self) -> Option<&mut V> {
         unsafe { (self.ptr_data().value_ptr(self.ptr)).as_mut() }.as_mut()
-    }
-
-    pub fn children(&self) -> &[Node<V>] {
-        unsafe { self.ptr_data().children(self.ptr) }
-    }
-    pub fn children_mut(&mut self) -> &mut [Node<V>] {
-        unsafe { self.ptr_data().children_mut(self.ptr) }
-    }
-    // TODO: consider storing first bytes in node? trade memory for lookup speed
-    fn children_first_bytes(&self) -> impl Iterator<Item = Option<u8>> {
-        self.children().iter().map(|n| n.label().first().cloned())
     }
 
     /// Returns mutable references to the node itself with its sibling and child
@@ -144,30 +87,9 @@ impl<V> Node<V> {
         }
     }
 
-    pub fn take_children(&mut self) -> Option<Vec<Node<V>>> {
-        let len = self.children_len();
-        if len == 0 {
-            return None;
-        }
-        let mut ret = Vec::with_capacity(len);
-        unsafe {
-            let ptr = self.ptr_data().children_ptr(self.ptr).unwrap();
-            for i in 0..len {
-                ret.push(ptr.add(i).read());
-            }
-            // reallocate parent now that children are gone
-            let value = self.take_value();
-            let node = Node::new(self.label(), [], value);
-            *self = node;
-        }
-        Some(ret)
-    }
-    pub fn children_len(&self) -> usize {
-        self.header().children_len as usize
-    }
     /// adds child at i and shifts elements right
     /// node must have children already and i <= len
-    unsafe fn add_child(&mut self, new_child: Node<V>, i: usize) {
+    pub(crate) unsafe fn add_child(&mut self, new_child: Node<V>, i: usize) {
         debug_assert!(
             i <= self.children_len(),
             "child index out of bounds: {i} > {}",
@@ -229,7 +151,7 @@ impl<V> Node<V> {
 
     /// removes child at i and shifts elements left
     /// node must have children already
-    unsafe fn remove_child(&mut self, i: usize) -> Node<V> {
+    pub(crate) unsafe fn remove_child(&mut self, i: usize) -> Node<V> {
         debug_assert!(
             i < self.children_len(),
             "child index out of bounds: {i} >= {}",
@@ -296,350 +218,7 @@ impl<V> Node<V> {
         }
     }
 
-    /// Gets an iterator which traverses the nodes in this tree, in depth first order.
-    // pub fn iter(&self) -> Iter<'_, V> {
-    //     Iter {
-    //         stack: vec![(0, self)],
-    //     }
-    // }
-
-    /// Gets a mutable iterator which traverses the nodes in this tree, in depth first order.
-    pub fn iter_mut(&mut self) -> IterMut<'_, V> {
-        IterMut {
-            stack: vec![(0, self)],
-        }
-    }
-
-    // pub(crate) fn iter_descendant(&self) -> Iter<'_, V> {
-    //     Iter {
-    //         stack: vec![(0, self)],
-    //     }
-    // }
-
-    pub(crate) fn iter_descendant_mut(&mut self) -> IterMut<'_, V> {
-        IterMut {
-            stack: vec![(0, self)],
-        }
-    }
-
-    pub(crate) fn common_prefixes<'a, 'b, K>(
-        &'a self,
-        key: &'b K,
-    ) -> CommonPrefixesIter<'a, 'b, K, V>
-    where
-        K: ?Sized + BorrowedBytes,
-    {
-        CommonPrefixesIter {
-            key,
-            stack: vec![(0, self)],
-        }
-    }
-
-    pub(crate) fn common_prefixes_owned<K: Bytes>(
-        &self,
-        key: K,
-    ) -> CommonPrefixesIterOwned<'_, K, V> {
-        CommonPrefixesIterOwned {
-            key,
-            stack: vec![(0, self)],
-        }
-    }
-
-    // TODO: child methods could use binary search?
-    fn child_with_first(&self, byte: u8) -> Option<&Self> {
-        let i = self.child_index_with_first(byte)?;
-        // SAFETY: we know i is inside the bounds already
-        Some(unsafe { self.children().get_unchecked(i) })
-    }
-    fn child_with_first_mut(&mut self, byte: u8) -> Option<&mut Self> {
-        let i = self.child_index_with_first(byte)?;
-        Some(unsafe { self.children_mut().get_unchecked_mut(i) })
-    }
-    fn child_index_with_first(&self, byte: u8) -> Option<usize> {
-        self.children_first_bytes()
-            .enumerate()
-            .find(|(_, b)| b.is_some_and(|b| b == byte))
-            .map(|(i, _)| i)
-    }
-
-    pub(crate) fn get<K: ?Sized + BorrowedBytes>(&self, key: &K) -> Option<&V> {
-        let mut cur = self;
-        let mut key = key.as_bytes();
-        loop {
-            key = crate::strip_prefix(key, cur.label())?;
-            match key.first() {
-                None => return cur.value(),
-                Some(first) => {
-                    cur = cur.child_with_first(*first)?;
-                }
-            }
-        }
-    }
-
-    pub(crate) fn get_mut<K: ?Sized + BorrowedBytes>(&mut self, key: &K) -> Option<&mut V> {
-        let mut cur = self;
-        let mut key = key.as_bytes();
-        loop {
-            key = crate::strip_prefix(key, cur.label())?;
-            match key.first() {
-                None => return cur.value_mut(),
-                Some(first) => {
-                    cur = cur.child_with_first_mut(*first)?;
-                }
-            }
-        }
-    }
-
-    // pub(crate) fn longest_common_prefix_len<K: ?Sized + BorrowedBytes>(
-    //     &self,
-    //     key: &K,
-    //     offset: usize,
-    // ) -> usize {
-    //     let (next, common_prefix_len) = key.strip_common_prefix_and_len(self.label());
-    //     let next_offset = offset + common_prefix_len;
-    //     if common_prefix_len == self.label().len() {
-    //         if next.is_empty() {
-    //             next_offset
-    //         } else {
-    //             self.child()
-    //                 .map(|child| child.longest_common_prefix_len(next, next_offset))
-    //                 .unwrap_or(next_offset)
-    //         }
-    //     } else if common_prefix_len == 0 && key.cmp_first_item(self.label()).is_ge() {
-    //         self.sibling()
-    //             .map(|sibling| sibling.longest_common_prefix_len(next, offset))
-    //             .unwrap_or(next_offset)
-    //     } else {
-    //         next_offset
-    //     }
-    // }
-    // pub(crate) fn get_longest_common_prefix<K: ?Sized + BorrowedBytes>(
-    //     &self,
-    //     key: &K,
-    //     offset: usize,
-    // ) -> Option<(usize, &V)> {
-    //     let (next, common_prefix_len) = key.strip_common_prefix_and_len(self.label());
-    //     if common_prefix_len == self.label().len() {
-    //         let offset = offset + common_prefix_len;
-    //         if next.is_empty() {
-    //             self.value().map(|v| (offset, v))
-    //         } else {
-    //             self.child()
-    //                 .and_then(|child| child.get_longest_common_prefix(next, offset))
-    //                 .or_else(|| self.value().map(|v| (offset, v)))
-    //         }
-    //     } else if common_prefix_len == 0 && key.cmp_first_item(self.label()).is_ge() {
-    //         self.sibling()
-    //             .and_then(|sibling| sibling.get_longest_common_prefix(next, offset))
-    //     } else {
-    //         None
-    //     }
-    // }
-    // pub(crate) fn get_longest_common_prefix_mut<K: ?Sized + BorrowedBytes>(
-    //     &mut self,
-    //     key: &K,
-    //     offset: usize,
-    // ) -> Option<(usize, &mut V)> {
-    //     let (next, common_prefix_len) = key.strip_common_prefix_and_len(self.label());
-    //     if common_prefix_len == self.label().len() {
-    //         let offset = offset + common_prefix_len;
-    //         if next.is_empty() {
-    //             self.value_mut().map(|v| (offset, v))
-    //         } else {
-    //             let this = self.as_mut();
-    //             this.child
-    //                 .and_then(|child| child.get_longest_common_prefix_mut(next, offset))
-    //                 .or_else(|| this.value.map(|v| (offset, v)))
-    //         }
-    //     } else if common_prefix_len == 0 && key.cmp_first_item(self.label()).is_ge() {
-    //         self.sibling_mut()
-    //             .and_then(|sibling| sibling.get_longest_common_prefix_mut(next, offset))
-    //     } else {
-    //         None
-    //     }
-    // }
-
-    // pub(crate) fn get_prefix_node<K: ?Sized + BorrowedBytes>(
-    //     &self,
-    //     key: &K,
-    // ) -> Option<(usize, &Self)> {
-    //     let (next, common_prefix_len) = key.strip_common_prefix_and_len(self.label());
-    //     if next.is_empty() {
-    //         Some((common_prefix_len, self))
-    //     } else if common_prefix_len == self.label().len() {
-    //         self.child().and_then(|child| child.get_prefix_node(next))
-    //     } else if common_prefix_len == 0 && key.cmp_first_item(self.label()).is_ge() {
-    //         self.sibling()
-    //             .and_then(|sibling| sibling.get_prefix_node(next))
-    //     } else {
-    //         None
-    //     }
-    // }
-
-    // pub(crate) fn get_prefix_node_mut<K: ?Sized + BorrowedBytes>(
-    //     &mut self,
-    //     key: &K,
-    // ) -> Option<(usize, &mut Self)> {
-    //     let (next, common_prefix_len) = key.strip_common_prefix_and_len(self.label());
-    //     if next.is_empty() {
-    //         Some((common_prefix_len, self))
-    //     } else if common_prefix_len == self.label().len() {
-    //         self.child_mut()
-    //             .and_then(|child| child.get_prefix_node_mut(next))
-    //     } else if common_prefix_len == 0 && key.cmp_first_item(self.label()).is_ge() {
-    //         self.sibling_mut()
-    //             .and_then(|sibling| sibling.get_prefix_node_mut(next))
-    //     } else {
-    //         None
-    //     }
-    // }
-
-    // pub(crate) fn split_by_prefix<K: ?Sized + BorrowedBytes>(
-    //     &mut self,
-    //     prefix: &K,
-    //     level: usize,
-    // ) -> Option<Self> {
-    //     let (next, common_prefix_len) = prefix.strip_common_prefix_and_len(self.label());
-    //     if common_prefix_len == prefix.as_bytes().len() {
-    //         let value = self.take_value();
-    //         let child = self.take_child();
-    //         // let node = Node::new(&self.label()[common_prefix_len..], value, child, None);
-    //         todo!();
-    //         if let Some(sibling) = self.take_sibling() {
-    //             *self = sibling;
-    //         }
-    //         Some(node)
-    //     } else if common_prefix_len == self.label().len() {
-    //         self.child_mut()
-    //             .and_then(|child| child.split_by_prefix(next, level + 1))
-    //             .inspect(|_old| {
-    //                 self.try_reclaim_child();
-    //                 self.try_merge_with_child(level);
-    //             })
-    //     } else if common_prefix_len == 0 && prefix.cmp_first_item(self.label()).is_ge() {
-    //         self.sibling_mut()
-    //             .and_then(|sibling| sibling.split_by_prefix(next, level))
-    //             .inspect(|_old| {
-    //                 self.try_reclaim_sibling();
-    //             })
-    //     } else {
-    //         None
-    //     }
-    // }
-    // pub(crate) fn remove<K: ?Sized + BorrowedBytes>(&mut self, key: &K, level: usize) -> Option<V> {
-    //     let (next, common_prefix_len) = key.strip_common_prefix_and_len(self.label());
-    //     if common_prefix_len == self.label().len() {
-    //         if next.is_empty() {
-    //             self.take_value().inspect(|_old| {
-    //                 self.try_merge_with_child(level);
-    //             })
-    //         } else {
-    //             self.child_mut()
-    //                 .and_then(|child| child.remove(next, level + 1))
-    //                 .inspect(|_old| {
-    //                     self.try_reclaim_child();
-    //                     self.try_merge_with_child(level);
-    //                 })
-    //         }
-    //     } else if common_prefix_len == 0 && key.cmp_first_item(self.label()).is_ge() {
-    //         self.sibling_mut()
-    //             .and_then(|sibling| sibling.remove(next, level))
-    //             .inspect(|_old| {
-    //                 self.try_reclaim_sibling();
-    //             })
-    //     } else {
-    //         None
-    //     }
-    // }
-
-    pub fn insert<K: ?Sized + BorrowedBytes>(&mut self, key: &K, value: V) -> Option<V> {
-        let mut cur = self;
-        let mut key = key.as_bytes();
-        loop {
-            match crate::longest_common_prefix(cur.label(), key) {
-                (0, Some(ord)) => {
-                    // insert new root
-                    // no common prefix, this only happens if we're at the root node
-                    let old_root = Node {
-                        ptr: cur.ptr,
-                        _marker: PhantomData,
-                    };
-                    let child = Node::new(key, [], Some(value));
-                    let children = if ord == Ordering::Greater {
-                        [child, old_root]
-                    } else {
-                        [old_root, child]
-                    };
-                    let new_root = Node::new(b"", children, None);
-                    // swap out current root for new root w/ children
-                    cur.ptr = new_root.ptr;
-                    mem::forget(new_root);
-
-                    return None;
-                }
-                (n, Some(_)) => {
-                    // new child from common prefix that needs split at n
-                    let (_, new_suffix) = unsafe { key.split_at_unchecked(n) };
-                    let new_child = Node::new(new_suffix, [], Some(value));
-                    unsafe {
-                        cur.split_at(n, Some(new_child));
-                    }
-                    return None;
-                }
-                (_, None) => {
-                    // new child needed but next element doesn't exist
-                    match key.len().cmp(&cur.label_len()) {
-                        Ordering::Less => {
-                            unsafe { cur.split_at(key.len(), None) };
-                            cur.set_value(value);
-                            return None;
-                        }
-                        Ordering::Equal => {
-                            // key and node are equal, replace data
-                            let old_val = cur.take_value();
-                            cur.set_value(value);
-                            return old_val;
-                        }
-                        Ordering::Greater => {
-                            // prefix match but key is longer, so we need to insert into a child
-                            key = unsafe { key.get_unchecked(cur.label_len()..) };
-                            let first_byte = key[0];
-                            match cur.child_index_with_first(first_byte) {
-                                Some(i) => {
-                                    // SAFETY: we just checked i is in range
-                                    cur = unsafe { cur.children_mut().get_unchecked_mut(i) };
-                                    continue;
-                                }
-                                None => {
-                                    // TODO: use binary_search(first_byte).unwrap_err()
-                                    // if we switch to storing first bytes
-                                    let insert_index = cur
-                                        .children_first_bytes()
-                                        .enumerate()
-                                        .find(|(_, b)| b.is_some_and(|b| b > first_byte))
-                                        .map(|(i, _)| i)
-                                        .unwrap_or(cur.children_len());
-
-                                    // we now have index of where we can insert
-                                    let child = Node::new(key, [], Some(value));
-                                    // SAFETY: insert_index must be <= children len
-                                    unsafe {
-                                        cur.add_child(child, insert_index);
-                                    }
-                                    return None;
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    fn label_len(&self) -> usize {
-        self.header().label_len as usize
-    }
-    unsafe fn split_at(&mut self, position: usize, new_child: Option<Node<V>>) {
+    pub(crate) unsafe fn split_at(&mut self, position: usize, new_child: Option<Node<V>>) {
         debug_assert!(
             position < self.label_len(),
             "label offset must be within label bounds"
@@ -712,33 +291,6 @@ impl<V> Node<V> {
             self.ptr = new_ptr.assume_init().into_ptr_forget();
         }
     }
-
-    // pub(crate) fn try_merge_with_child(&mut self, level: usize) {
-    //     if level == 0 {
-    //         return;
-    //     }
-
-    //     if self.value().is_some() || !self.flags().contains(Flags::CHILD_INITIALIZED) {
-    //         return;
-    //     }
-
-    //     let flags = assert_some!(self.child()).flags();
-    //     if !flags.contains(Flags::SIBLING_INITIALIZED)
-    //         && (self.label_len() + assert_some!(self.child()).label_len()) <= MAX_LABEL_LEN
-    //     {
-    //         let mut child = assert_some!(self.take_child());
-    //         let sibling = self.take_sibling();
-    //         let value = child.take_value();
-    //         let grandchild = child.take_child();
-
-    //         let mut label = Vec::with_capacity(self.label_len() + child.label_len());
-    //         label.extend(self.label());
-    //         label.extend(child.label());
-    //         // let node = Self::new(&label, value, grandchild, sibling);
-    //         // *self = node;
-    //         todo!();
-    //     }
-    // }
 }
 
 impl<V> Drop for Node<V> {
@@ -756,193 +308,10 @@ impl<V> Drop for Node<V> {
 //     }
 // }
 
-// impl<V> IntoIterator for Node<V> {
-//     type Item = (usize, Node<V>);
-//     type IntoIter = IntoIter<V>;
-//     fn into_iter(self) -> Self::IntoIter {
-//         IntoIter {
-//             stack: vec![(0, self)],
-//         }
-//     }
-// }
-
-/// An iterator which traverses the nodes in a tree, in depth first order.
-///
-/// The first element of an item is the level of the traversing node.
-#[derive(Debug)]
-pub struct Iter<'a, V: 'a> {
-    stack: Vec<(usize, &'a Node<V>)>,
-}
-// impl<'a, V: 'a> Iterator for Iter<'a, V> {
-//     type Item = (usize, &'a Node<V>);
-//     fn next(&mut self) -> Option<Self::Item> {
-//         if let Some((level, node)) = self.stack.pop() {
-//             if level != 0 {
-//                 if let Some(sibling) = node.sibling() {
-//                     self.stack.push((level, sibling));
-//                 }
-//             }
-//             if let Some(child) = node.child() {
-//                 self.stack.push((level + 1, child));
-//             }
-//             Some((level, node))
-//         } else {
-//             None
-//         }
-//     }
-// }
-
-/// A mutable iterator which traverses the nodes in a tree, in depth first order.
-///
-/// The first element of an item is the level of the traversing node.
-#[derive(Debug)]
-pub struct IterMut<'a, V: 'a> {
-    stack: Vec<(usize, &'a mut Node<V>)>,
-}
-
-/// A reference to an immediate node (without child or sibling) with its
-/// label and a mutable reference to its value, if present.
-pub struct NodeMut<'a, V: 'a> {
-    label: &'a [u8],
-    value: Option<&'a mut V>,
-    children: &'a mut [Node<V>],
-}
-impl<'a, V: 'a> NodeMut<'a, V> {
-    /// Returns the label of the node.
-    pub fn label(&self) -> &'a [u8] {
-        self.label
-    }
-
-    /// Converts into a mutable reference to the value.
-    pub fn into_value_mut(self) -> Option<&'a mut V> {
-        self.value
-    }
-}
-
-impl<'a, V: 'a> Iterator for IterMut<'a, V> {
-    type Item = (usize, NodeMut<'a, V>);
-    fn next(&mut self) -> Option<Self::Item> {
-        if let Some((level, node)) = self.stack.pop() {
-            let mut node = node.as_mut();
-            // if level != 0 {
-            //     if let Some(sibling) = node.sibling.take() {
-            //         self.stack.push((level, sibling));
-            //     }
-            // }
-            // if let Some(child) = node.child.take() {
-            //     self.stack.push((level + 1, child));
-            // }
-            todo!();
-            Some((level, node))
-        } else {
-            None
-        }
-    }
-}
-
-/// An iterator over entries in that collects all values up to
-/// until the key stops matching.
-#[derive(Debug)]
-pub(crate) struct CommonPrefixesIter<'a, 'b, K: ?Sized, V> {
-    key: &'b K,
-    stack: Vec<(usize, &'a Node<V>)>,
-}
-
-impl<'a, K, V> Iterator for CommonPrefixesIter<'a, '_, K, V>
-where
-    K: ?Sized + BorrowedBytes,
-{
-    type Item = (usize, &'a Node<V>);
-    fn next(&mut self) -> Option<Self::Item> {
-        while let Some((offset, node)) = self.stack.pop() {
-            let key = self.key.strip_n_prefix(offset);
-            let (_next, common_prefix_len) = key.strip_common_prefix_and_len(node.label());
-            if common_prefix_len == 0 && key.cmp_first_item(node.label()).is_ge() {
-                // if let Some(sibling) = node.sibling() {
-                //     self.stack.push((offset, sibling));
-                // }
-                todo!();
-            }
-
-            if common_prefix_len == node.label().len() {
-                let prefix_len = offset + common_prefix_len;
-                // if let Some(child) = node.child() {
-                //     self.stack.push((prefix_len, child));
-                // }
-                todo!();
-                return Some((prefix_len, node));
-            }
-        }
-        None
-    }
-}
-
-/// An iterator over entries in that collects all values up to
-/// until the key stops matching.
-#[derive(Debug)]
-pub(crate) struct CommonPrefixesIterOwned<'a, K, V> {
-    key: K,
-    stack: Vec<(usize, &'a Node<V>)>,
-}
-
-impl<'a, K, V> Iterator for CommonPrefixesIterOwned<'a, K, V>
-where
-    K: Bytes + AsRef<K::Borrowed>,
-{
-    type Item = (usize, &'a Node<V>);
-    fn next(&mut self) -> Option<Self::Item> {
-        while let Some((offset, node)) = self.stack.pop() {
-            let key = self.key.as_ref().strip_n_prefix(offset);
-            let (_next, common_prefix_len) = key.strip_common_prefix_and_len(node.label());
-            if common_prefix_len == 0 && key.cmp_first_item(node.label()).is_ge() {
-                // if let Some(sibling) = node.sibling() {
-                //     self.stack.push((offset, sibling));
-                // }
-                todo!();
-            }
-
-            if common_prefix_len == node.label().len() {
-                let prefix_len = offset + common_prefix_len;
-                // if let Some(child) = node.child() {
-                //     self.stack.push((prefix_len, child));
-                // }
-                todo!();
-                return Some((prefix_len, node));
-            }
-        }
-        None
-    }
-}
-
-/// An owning iterator which traverses the nodes in a tree, in depth first order.
-///
-/// The first element of an item is the level of the traversing node.
-#[derive(Debug)]
-pub struct IntoIter<V> {
-    stack: Vec<(usize, Node<V>)>,
-}
-// impl<V> Iterator for IntoIter<V> {
-//     type Item = (usize, Node<V>);
-//     fn next(&mut self) -> Option<Self::Item> {
-//         if let Some((level, mut node)) = self.stack.pop() {
-//             if let Some(sibling) = node.take_sibling() {
-//                 self.stack.push((level, sibling));
-//             }
-//             if let Some(child) = node.take_child() {
-//                 self.stack.push((level + 1, child));
-//             }
-//             Some((level, node))
-//         } else {
-//             None
-//         }
-//     }
-// }
-
 #[cfg(test)]
 mod tests {
     use super::*;
     // use crate::{PatriciaSet, StringPatriciaMap};
-    use core::str;
 
     #[test]
     fn root_works() {
