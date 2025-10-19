@@ -1,15 +1,7 @@
-//! A node which represents a subtree of a patricia tree.
-use crate::{
-    BorrowedBytes, Bytes,
-    node_header::{NodeHeader, NodePtrAndData, PtrData},
-};
+//! node common methods
+use crate::{BorrowedBytes, Bytes, Node};
 use alloc::vec::Vec;
-use core::{
-    cmp::Ordering,
-    marker::PhantomData,
-    mem,
-    ptr::{self, NonNull},
-};
+use core::cmp::Ordering;
 
 macro_rules! assert_some {
     ($expr:expr) => {
@@ -23,26 +15,6 @@ macro_rules! assert_some {
 }
 
 const MAX_LABEL_LEN: usize = u8::MAX as usize;
-
-/// A node which represents a subtree of a patricia tree.
-///
-/// Note that this is a low level building block.
-/// Usually it is recommended to use more high level data structures (e.g., `PatriciaTree`).
-#[derive(Debug)]
-pub struct Node<V> {
-    // alignment: will be no less than 8 on x86-64 because NonNull<V> is 8 bytes
-    // if V is wider, then the alignment will be bigger
-    // layout:
-    //   - label_len: u8
-    //   - label: [u8; label_len]
-    //   - children: [NonNull<Node<V>>; children_len]
-    //   - value: Option<V>
-    pub(crate) ptr: ptr::NonNull<NodeHeader>,
-    pub(crate) _marker: PhantomData<V>,
-}
-
-unsafe impl<V: Send> Send for Node<V> {}
-unsafe impl<V: Sync> Sync for Node<V> {}
 
 impl<V> Node<V> {
     /// Makes a new node which represents an empty tree.
@@ -62,8 +34,13 @@ impl<V> Node<V> {
             label.len() <= MAX_LABEL_LEN,
             "nodes must have a label len <= 255"
         );
+        let mut flags = Flags::empty();
+        if value.is_some() {
+            flags.insert(Flags::VALUE_ALLOCATED | Flags::VALUE_INITIALIZED);
+        }
 
         let header = NodeHeader {
+            flags,
             label_len: label.len() as u8,
             children_len: children.len() as u8,
         };
@@ -72,7 +49,9 @@ impl<V> Node<V> {
             ptr.write_header(header);
             ptr.write_label(label);
             ptr.write_children(children);
-            ptr.write_value(value);
+            if let Some(val) = value {
+                ptr.write_value(val);
+            }
             ptr.assume_init()
         }
     }
@@ -82,7 +61,6 @@ impl<V> Node<V> {
         unsafe { PtrData::<V>::label(self.ptr) }
     }
 
-    #[cfg(feature = "serde")]
     pub(crate) fn label_mut(&mut self) -> &mut [u8] {
         unsafe { PtrData::<V>::label_mut(self.ptr) }
     }
@@ -105,12 +83,18 @@ impl<V> Node<V> {
 
     /// Returns the reference to the value of this node.
     pub fn value(&self) -> Option<&V> {
-        unsafe { (self.ptr_data().value_ptr(self.ptr)).as_ref() }.as_ref()
+        if let Some(val) = unsafe { self.ptr_data().value_ptr_init(self.ptr) } {
+            return Some(unsafe { val.as_ref() });
+        }
+        None
     }
 
     /// Returns the mutable reference to the value of this node.
     pub fn value_mut(&mut self) -> Option<&mut V> {
-        unsafe { (self.ptr_data().value_ptr(self.ptr)).as_mut() }.as_mut()
+        if let Some(mut val) = unsafe { self.ptr_data().value_ptr_init(self.ptr) } {
+            return Some(unsafe { val.as_mut() });
+        }
+        None
     }
 
     pub fn children(&self) -> &[Node<V>] {
@@ -126,7 +110,11 @@ impl<V> Node<V> {
 
     /// Returns mutable references to the node itself with its sibling and child
     pub fn as_mut(&mut self) -> NodeMut<'_, V> {
-        let value = unsafe { self.ptr_data().value_ptr(self.ptr).as_mut() }.as_mut();
+        let value = if let Some(mut value) = unsafe { self.ptr_data().value_ptr_init(self.ptr) } {
+            Some(unsafe { value.as_mut() })
+        } else {
+            None
+        };
         let children = unsafe { self.ptr_data().children_mut(self.ptr) };
 
         NodeMut {
@@ -138,12 +126,8 @@ impl<V> Node<V> {
 
     /// Takes the value out of this node.
     pub fn take_value(&mut self) -> Option<V> {
-        unsafe {
-            let ptr = self.ptr_data().value_ptr(self.ptr);
-            ptr.replace(None)
-        }
+        unsafe { self.ptr_data().take_value(self.ptr) }
     }
-
     pub fn take_children(&mut self) -> Option<Vec<Node<V>>> {
         let len = self.children_len();
         if len == 0 {
@@ -169,55 +153,53 @@ impl<V> Node<V> {
     /// node must have children already and i <= len
     unsafe fn add_child(&mut self, new_child: Node<V>, i: usize) {
         debug_assert!(
-            i <= self.children_len(),
+            i <= self.children_len() as usize,
             "child index out of bounds: {i} > {}",
             self.children_len()
         );
 
         let new_header = NodeHeader {
+            flags: self.flags(),
             label_len: self.label_len() as u8,
             children_len: self.children_len() as u8 + 1,
         };
         let old_children_len = self.children_len();
-        let new_ptr_data = new_header.ptr_data();
-        let old_ptr_data = self.ptr_data();
+        let mut new_ptr = new_header.ptr_data().allocate();
+        let old_ptr = NodePtrAndData {
+            ptr: self.ptr,
+            ptr_data: self.ptr_data(),
+        };
         let value = self.take_value();
 
         // dbg!(self.ptr_data().layout);
         // dbg!(new_header.ptr_data::<V>().layout);
 
         unsafe {
-            let raw_ptr = alloc::alloc::realloc(
-                self.ptr.as_ptr().cast(),
-                old_ptr_data.layout,
-                new_ptr_data.layout.size(),
-            )
-            .cast();
-
-            let Some(raw_ptr) = NonNull::new(raw_ptr) else {
-                alloc::alloc::handle_alloc_error(new_ptr_data.layout);
-            };
-            let mut new_ptr = NodePtrAndData {
-                ptr: raw_ptr,
-                ptr_data: new_ptr_data,
-            };
-            let num = old_children_len - i;
-            // write data in right to left order since we're growing
-            new_ptr.write_value(value);
-
-            // shift children from [i..] to [i+1..]
-            if num > 0 {
-                assert_some!(new_ptr.children_ptr())
-                    .add(i)
-                    .copy_to(assert_some!(new_ptr.children_ptr()).add(i + 1), num);
-            }
-            // write child at i
-            assert_some!(new_ptr.children_ptr()).add(i).write(new_child);
-            // update header value:
+            // update header value/label
             new_ptr.write_header(new_header);
-            // label already there from realloc
+            new_ptr.write_label(self.label());
+
+            let num = old_children_len - i;
+            // copy children
+            if let Some(new_child_ptr) = new_ptr.children_ptr() {
+                if let Some(old_child) = old_ptr.children_ptr() {
+                    // copy ..i
+                    new_child_ptr.copy_from_nonoverlapping(old_child, i);
+                    // copy i + 1..i+num
+                    new_child_ptr
+                        .add(i + 1)
+                        .copy_from_nonoverlapping(old_child.add(i), num);
+                }
+                // write child at i
+                new_child_ptr.add(i).write(new_child);
+            }
+            if let Some(val) = value {
+                new_ptr.write_value(val);
+            }
             // re-assign ptr to avoid Drop
             self.ptr = new_ptr.assume_init().into_ptr_forget();
+            // dealloc old node without drop
+            old_ptr.ptr_data.dealloc_forget(old_ptr.ptr);
         }
     }
     /// forget self so Drop is not called and return the ptr
@@ -231,68 +213,101 @@ impl<V> Node<V> {
     /// node must have children already
     unsafe fn remove_child(&mut self, i: usize) -> Node<V> {
         debug_assert!(
-            i < self.children_len(),
+            i < self.children_len() as usize,
             "child index out of bounds: {i} >= {}",
             self.children_len()
         );
 
         let new_header = NodeHeader {
+            flags: self.flags(),
             label_len: self.label_len() as u8,
             children_len: self.children_len() as u8 - 1,
         };
         let old_children_len = self.children_len();
-        let new_ptr_data = new_header.ptr_data::<V>();
-        let new_size = new_ptr_data.layout.size();
-        let new_layout = new_ptr_data.layout;
-        let old_layout = self.ptr_data().layout;
-        // TODO: could use ptr::copy since we use realloc
-        let value = self.take_value();
+
+        let mut new_ptr = new_header.ptr_data::<V>().allocate();
         let old_ptr = NodePtrAndData {
             ptr: self.ptr,
             ptr_data: self.ptr_data(),
         };
+        let value = self.take_value();
 
         unsafe {
             // get child at i
             let removed_child = assert_some!(old_ptr.children_ptr()).add(i).read();
-            // child.drop_in_place(); // if we want to drop instead of return
 
-            let mut new_ptr = NodePtrAndData {
-                ptr: self.ptr,
-                ptr_data: new_ptr_data,
-            };
-            // write data in left to right order since we're shrinking
+            // write header/label
             new_ptr.write_header(new_header);
+            new_ptr.write_label(self.label());
+            // copy children
             // shift children from [i+1..] to [i..]
             let num = old_children_len - (i + 1);
-            if let Some(child_ptr) = new_ptr.children_ptr() {
-                child_ptr.add(i).copy_from(child_ptr.add(i + 1), num);
+            // copy children
+            if let Some(new_child) = new_ptr.children_ptr() {
+                if let Some(old_child) = old_ptr.children_ptr() {
+                    // copy ..i
+                    new_child.copy_from_nonoverlapping(old_child, i);
+                    // copy i + 1..i+num
+                    new_child
+                        .add(i)
+                        .copy_from_nonoverlapping(old_child.add(i + 1), num);
+                }
             }
-
-            let new_ptr =
-                alloc::alloc::realloc(self.ptr.as_ptr().cast(), old_layout, new_size).cast();
-            let Some(new_ptr) = NonNull::new(new_ptr) else {
-                alloc::alloc::handle_alloc_error(new_layout);
-            };
-            let new_ptr_data = new_header.ptr_data();
-            let mut new_ptr = NodePtrAndData {
-                ptr: new_ptr,
-                ptr_data: new_ptr_data,
-            };
-            // write value in new shrunken space
-            new_ptr.write_value(value);
+            // write value
+            if let Some(val) = value {
+                new_ptr.write_value(val);
+            }
             // re-assign ptr to avoid drop
             self.ptr = new_ptr.assume_init().into_ptr_forget();
+            // dealloc old buffet without calling drop on value/children
+            old_ptr.ptr_data.dealloc_forget(old_ptr.ptr);
             removed_child
         }
     }
 
     /// Sets the value of this node.
     pub fn set_value(&mut self, value: V) {
-        // self.take_value();
-        unsafe {
-            let ptr = self.ptr_data().value_ptr(self.ptr);
-            let _ = ptr.replace(Some(value));
+        self.take_value();
+        if let Some(ptr) = unsafe { self.ptr_data().value_ptr_alloc(self.ptr) } {
+            self.set_flags(Flags::VALUE_INITIALIZED, true);
+            unsafe {
+                ptr.write(value);
+            }
+        } else {
+            let mut new_header = *self.header();
+            new_header
+                .flags
+                .insert(Flags::VALUE_ALLOCATED | Flags::VALUE_INITIALIZED);
+
+            let children_len = self.children_len();
+            let old_ptr_data = self.ptr_data();
+
+            let old_ptr = NodePtrAndData {
+                ptr: self.ptr,
+                ptr_data: old_ptr_data,
+            };
+
+            // allocate space for new node
+            let mut new_ptr = new_header.ptr_data().allocate();
+
+            unsafe {
+                // copy header
+                new_ptr.write_header(new_header);
+                // copy label
+                new_ptr.write_label(self.label());
+                // copy children
+                if let Some(new_child) = new_ptr.children_ptr() {
+                    if let Some(old_child) = old_ptr.children_ptr() {
+                        new_child.copy_from_nonoverlapping(old_child, children_len);
+                    }
+                }
+                // write new value
+                new_ptr.write_value(value);
+                // assign to self
+                self.ptr = new_ptr.assume_init().into_ptr_forget();
+                // dealloc the old node without calling drop on its contents
+                old_ptr.ptr_data.dealloc_forget(old_ptr.ptr);
+            }
         }
     }
 
@@ -363,12 +378,17 @@ impl<V> Node<V> {
     }
 
     pub(crate) fn get<K: ?Sized + BorrowedBytes>(&self, key: &K) -> Option<&V> {
+        self.get_node(key).and_then(|n| n.value())
+    }
+
+    #[inline]
+    pub(crate) fn get_node<K: ?Sized + BorrowedBytes>(&self, key: &K) -> Option<&Self> {
         let mut cur = self;
         let mut key = key.as_bytes();
         loop {
             key = crate::strip_prefix(key, cur.label())?;
             match key.first() {
-                None => return cur.value(),
+                None => return Some(cur),
                 Some(first) => {
                     cur = cur.child_with_first(*first)?;
                 }
@@ -376,18 +396,23 @@ impl<V> Node<V> {
         }
     }
 
-    pub(crate) fn get_mut<K: ?Sized + BorrowedBytes>(&mut self, key: &K) -> Option<&mut V> {
+    #[inline]
+    pub(crate) fn get_node_mut<K: ?Sized + BorrowedBytes>(&mut self, key: &K) -> Option<&mut Self> {
         let mut cur = self;
         let mut key = key.as_bytes();
         loop {
             key = crate::strip_prefix(key, cur.label())?;
             match key.first() {
-                None => return cur.value_mut(),
+                None => return Some(cur),
                 Some(first) => {
                     cur = cur.child_with_first_mut(*first)?;
                 }
             }
         }
+    }
+
+    pub(crate) fn get_mut<K: ?Sized + BorrowedBytes>(&mut self, key: &K) -> Option<&mut V> {
+        self.get_node_mut(key).and_then(|n| n.value_mut())
     }
 
     // pub(crate) fn longest_common_prefix_len<K: ?Sized + BorrowedBytes>(
@@ -636,6 +661,13 @@ impl<V> Node<V> {
         }
     }
 
+    pub(crate) fn flags(&self) -> Flags {
+        Flags::from_bits_truncate(self.header().flags.bits())
+    }
+    fn set_flags(&mut self, other: Flags, value: bool) {
+        self.header_mut().flags.set(other, value);
+    }
+
     fn label_len(&self) -> usize {
         self.header().label_len as usize
     }
@@ -644,17 +676,23 @@ impl<V> Node<V> {
             position < self.label_len(),
             "label offset must be within label bounds"
         );
+        let flags = self.flags();
         let value = self.take_value();
+        let old_ptr = NodePtrAndData {
+            ptr: self.ptr,
+            ptr_data: self.ptr_data(),
+        };
 
         let child = unsafe {
             let suffix = self.label().get_unchecked(position..);
             let old_children_len = self.children_len();
             let child_hdr = NodeHeader {
+                flags,
                 label_len: suffix.len() as u8,
                 children_len: old_children_len as u8,
             };
-            let ptr_data = child_hdr.ptr_data();
-            let mut ptr = ptr_data.allocate();
+
+            let mut ptr = child_hdr.ptr_data().allocate();
 
             // copy data
             ptr.write_header(child_hdr);
@@ -665,33 +703,23 @@ impl<V> Node<V> {
                 dst_children
                     .copy_from_nonoverlapping(src_children, child_hdr.children_len as usize);
             }
-            ptr.write_value(value);
+            if let Some(val) = value {
+                ptr.write_value(val);
+            }
             ptr.assume_init()
         };
-        // resize old allocation
+        // make new allocation for self with no value
         let new_hdr = NodeHeader {
+            flags: Flags::empty(),
             label_len: position as u8,
             children_len: 1 + new_child.is_some() as u8,
         };
 
-        let new_data = new_hdr.ptr_data::<V>();
-        let new_layout = new_data.layout;
-        let old_layout = self.ptr_data().layout;
+        let mut new_ptr = new_hdr.ptr_data().allocate();
 
-        let mut new_ptr = unsafe {
-            let new_ptr =
-                alloc::alloc::realloc(self.ptr.as_ptr().cast(), old_layout, new_layout.size())
-                    .cast();
-            let Some(new_ptr) = NonNull::new(new_ptr) else {
-                alloc::alloc::handle_alloc_error(new_layout);
-            };
-            NodePtrAndData {
-                ptr: new_ptr,
-                ptr_data: new_data,
-            }
-        };
         unsafe {
             new_ptr.write_header(new_hdr);
+            new_ptr.write_label(self.label().get_unchecked(..position));
             if let Some(new_child) = new_child {
                 let children = {
                     let suffix_first = assert_some!(child.label().first());
@@ -707,9 +735,9 @@ impl<V> Node<V> {
             } else {
                 new_ptr.write_children([child]);
             }
-            new_ptr.write_value(None);
             // re-assign ptr to avoid Drop of old children
             self.ptr = new_ptr.assume_init().into_ptr_forget();
+            old_ptr.ptr_data.dealloc_forget(old_ptr.ptr);
         }
     }
 
@@ -1076,9 +1104,24 @@ mod tests {
 
     #[test]
     fn test_get_and_get_mut() {
+        let mut root: Node<u32> = Node::new(b"test", [], Some(1));
+        // insert test
+        // split at 2 so we have te -> am
+        //                          -> st
+        unsafe {
+            root.split_at(2, Some(Node::new(b"am", [], Some(2))));
+        }
+        assert_eq!(root.get("team"), Some(&2));
+        assert_eq!(root.get("test"), Some(&1));
+
+        // recreate root
         let mut root: Node<u32> = Node::new(b"", [], Some(2));
         root.insert("test", 1);
+        assert_eq!(root.get("test"), Some(&1));
+
         root.insert("team", 2);
+        assert_eq!(root.get("team"), Some(&2));
+
         root.insert("toast", 3);
 
         // Test get

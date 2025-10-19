@@ -10,7 +10,7 @@ use core::{
 
 use alloc::alloc;
 
-use crate::opt::node::Node;
+use crate::node_alloc::node::Node;
 
 macro_rules! extend {
     ($expr:expr) => {{

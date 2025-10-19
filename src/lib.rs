@@ -40,20 +40,23 @@ use core::cmp::Ordering;
 // pub mod set;
 
 // mod tree;
+mod node_common;
 
-// #[cfg(not(feature = "realloc"))]
-#[cfg(feature = "realloc")]
+#[cfg(not(feature = "realloc"))]
+// #[cfg(feature = "realloc")]
 pub mod node;
-// #[cfg(not(feature = "realloc"))]
-#[cfg(feature = "realloc")]
+#[cfg(not(feature = "realloc"))]
+// #[cfg(feature = "realloc")]
 mod node_header;
 
-#[cfg(not(feature = "realloc"))]
-// #[cfg(feature = "realloc")]
-mod opt;
-#[cfg(not(feature = "realloc"))]
-// #[cfg(feature = "realloc")]
-pub use opt::node;
+// #[cfg(not(feature = "realloc"))]
+#[cfg(feature = "realloc")]
+mod node_alloc;
+// #[cfg(not(feature = "realloc"))]
+#[cfg(feature = "realloc")]
+pub use node_alloc::node;
+
+pub use node::Node;
 
 /// This trait represents a bytes type that can be used as the key type of patricia trees.
 pub trait Bytes {

@@ -1,5 +1,5 @@
-// use patricia_tree::{PatriciaMap, PatriciaSet};
-use patricia_tree::node::Node;
+// use radix_trie::{PatriciaMap, PatriciaSet};
+use radix_trie::node::Node;
 use std::{
     collections::{BTreeSet, HashSet},
     io::BufRead,
@@ -44,7 +44,7 @@ fn main() -> noargs::Result<()> {
         "node" => {
             let mut set = Node::root();
             each_line(|line| {
-                set.insert(line.as_str(), rand::random::<u64>());
+                set.insert(line.as_str(), ());
             });
             // println!("# LINES: {}", set.len());
         }
