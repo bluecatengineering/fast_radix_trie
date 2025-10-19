@@ -10,7 +10,7 @@
 //! # Examples
 //!
 //! ```
-//! use patricia_tree::PatriciaMap;
+//! use radix_trie::PatriciaMap;
 //!
 //! let mut map = PatriciaMap::new();
 //! map.insert("foo", 1);
