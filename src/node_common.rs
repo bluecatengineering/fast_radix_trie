@@ -9,22 +9,20 @@ use std::collections::VecDeque;
 
 macro_rules! assert_some {
     ($expr:expr) => {
-        if let Some(value) = $expr {
-            value
-        } else {
+        match $expr {
+            Some(value) => value,
             // TODO: change to unreachable?
-            panic!("`{}` must be `Some(..)`", stringify!($expr));
+            None => panic!("`{}` must be `Some(..)`", stringify!($expr)),
         }
     };
 }
 
 macro_rules! extend {
     ($expr:expr) => {{
-        let val = match $expr {
+        match $expr {
             Ok(tuple) => tuple,
             Err(_) => unreachable!("Layout extension failed"),
-        };
-        val
+        }
     }};
 }
 
@@ -541,7 +539,8 @@ impl<V: fmt::Debug> fmt::Debug for Node<V> {
             let label = String::from_utf8_lossy(next.label());
             let value = next
                 .value()
-                .map_or("(-)".to_string(), |val| format!("({val:?})"));
+                .map(|v| format!("({v:?})"))
+                .unwrap_or_else(|| String::from("(-)"));
 
             let prefix = if white_indentation == 0 && line_indentation == 0 {
                 String::new()
@@ -578,7 +577,7 @@ impl<V> IntoIterator for Node<V> {
     type IntoIter = IntoIter<V>;
     fn into_iter(self) -> Self::IntoIter {
         IntoIter {
-            stack: vec![(0, self)].into(),
+            stack: vec![(0, self)],
         }
     }
 }
@@ -742,7 +741,7 @@ where
     type Item = (usize, &'a Node<V>);
     fn next(&mut self) -> Option<Self::Item> {
         while let Some((offset, node)) = self.stack.pop() {
-            let key = self.key.strip_n_prefix(offset).as_bytes();
+            let key = &self.key.as_bytes()[offset..];
             let next = crate::strip_prefix(key, node.label())?;
             let common_prefix_len = key.len() - next.len();
             let prefix_len = offset + common_prefix_len;
@@ -773,7 +772,7 @@ where
     type Item = (usize, &'a Node<V>);
     fn next(&mut self) -> Option<Self::Item> {
         while let Some((offset, node)) = self.stack.pop() {
-            let key = self.key.as_ref().strip_n_prefix(offset).as_bytes();
+            let key = &self.key.as_ref().as_bytes()[offset..];
             let next = crate::strip_prefix(key, node.label())?;
             let common_prefix_len = key.len() - next.len();
             let prefix_len = offset + common_prefix_len;

@@ -84,28 +84,14 @@ pub trait BorrowedBytes {
     /// Caller can assume that `is_valid_bytes(bytes)` is `true`.
     fn from_bytes(bytes: &[u8]) -> &Self;
 
-    /// Returns a suffix of this instance not containing the common prefix with the given bytes.
-    fn strip_common_prefix(&self, bytes: &[u8]) -> &Self;
-
-    /// Same as [`strip_common_prefix()`], but also returns the length of the common prefix.
-    fn strip_common_prefix_and_len(&self, bytes: &[u8]) -> (&Self, usize) {
-        let next = self.strip_common_prefix(bytes);
-        let common_prefix_len = self.as_bytes().len() - next.as_bytes().len();
-        (next, common_prefix_len)
-    }
-
+    /// returns the index of the longest common prefix and the ordering of the next character
+    /// if it exists
     fn longest_common_prefix(&self, bytes: &[u8]) -> (usize, Option<Ordering>);
-
-    /// Compares the first item of this instance with the first item represented in the the given bytes.
-    fn cmp_first_item(&self, bytes: &[u8]) -> Ordering;
 
     /// Returns `true` if this instance is empty, otherwise `false`.
     fn is_empty(&self) -> bool {
         self.as_bytes().is_empty()
     }
-
-    /// Returns a suffix of this instance not containing the first `n` bytes.
-    fn strip_n_prefix(&self, n: usize) -> &Self;
 }
 
 impl BorrowedBytes for [u8] {
@@ -119,19 +105,6 @@ impl BorrowedBytes for [u8] {
 
     fn from_bytes(bytes: &[u8]) -> &Self {
         bytes
-    }
-
-    fn strip_common_prefix(&self, bytes: &[u8]) -> &Self {
-        let (i, _) = crate::longest_common_prefix(self, bytes);
-        &self[i..]
-    }
-
-    fn cmp_first_item(&self, bytes: &[u8]) -> Ordering {
-        self.first().cmp(&bytes.first())
-    }
-
-    fn strip_n_prefix(&self, n: usize) -> &Self {
-        &self[n..]
     }
 
     fn longest_common_prefix(&self, bytes: &[u8]) -> (usize, Option<Ordering>) {
@@ -150,30 +123,6 @@ impl BorrowedBytes for str {
 
     fn from_bytes(bytes: &[u8]) -> &Self {
         core::str::from_utf8(bytes).expect("unreachable")
-    }
-
-    // TODO: remove. we should work on bytes only at node level
-    fn strip_common_prefix(&self, bytes: &[u8]) -> &Self {
-        for (i, c) in self.char_indices() {
-            let n = c.len_utf8();
-            if self.as_bytes()[i..i + n]
-                .iter()
-                .ne(bytes[i..].iter().take(n))
-            {
-                return &self[i..];
-            }
-        }
-        ""
-    }
-
-    fn cmp_first_item(&self, bytes: &[u8]) -> Ordering {
-        self.chars()
-            .next()
-            .cmp(&Self::from_bytes(bytes).chars().next())
-    }
-
-    fn strip_n_prefix(&self, n: usize) -> &Self {
-        &self[n..]
     }
 
     fn longest_common_prefix(&self, bytes: &[u8]) -> (usize, Option<Ordering>) {
@@ -298,13 +247,5 @@ mod test {
         );
         // both are equal
         assert_eq!(longest_common_prefix(b"000000001", b"000000001"), (9, None));
-    }
-
-    #[test]
-    fn test_strip_common_prefix() {
-        assert_eq!(b"foobar123".strip_common_prefix(b""), b"foobar123");
-        assert_eq!(b"foobar123".strip_common_prefix(b"foobar"), b"123");
-        assert_eq!(b"".strip_common_prefix(b"foobar"), b"");
-        assert_eq!(b"foobar123".strip_common_prefix(b"notfoobar"), b"foobar123");
     }
 }
