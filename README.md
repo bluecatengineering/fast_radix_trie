@@ -1,29 +1,24 @@
-patricia_tree
-=============
+# fast_radix_tree
 
 [![patricia_tree](https://img.shields.io/crates/v/patricia_tree.svg)](https://crates.io/crates/patricia_tree)
 [![Documentation](https://docs.rs/patricia_tree/badge.svg)](https://docs.rs/patricia_tree)
 [![Actions Status](https://github.com/sile/patricia_tree/workflows/CI/badge.svg)](https://github.com/sile/patricia_tree/actions)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-Memory-efficient data structures based on patricia tree (a.k.a, radix tree).
+Memory-efficient data structures based on radix tree. Offers two impls, one optimized for minimum memory usage, and one optimized for mutations that uses `realloc`.
 
-[Documentation](https://docs.rs/patricia_tree)
+[Documentation](https://docs.rs/fast_radix_tree)
 
-A common prefixes of the keys in a patricia tree are represented by a shared path.
-So if the prefixes of the key set is highly redundant,
-the memory usage of the resulting patricia tree will be drastically less than
-more generic data structures (e.g., `BTreeMap`).
+A radix tree compresses nodes such that common prefixes are shared. This minimizes memory usage for storing large sets of strings/bytes. Additionally, this library tries to optimize memory layout/padding to further reduce memory consumption, leading to significant memory savings and fast traversal time for large data sets. Memory usage can be dramatically less than storing in std's HashMap or BTreeMap.
 
 See [Radix tree](https://en.wikipedia.org/wiki/Radix_tree) for more details.
 
-Examples
----------
+## Examples
 
 ```rust
-use patricia_tree::PatriciaMap;
+use fast_radix_tree::RadixTree;
 
-let mut map = PatriciaMap::new();
+let mut map = RadixTree::new();
 map.insert("foo", 1);
 map.insert("bar", 2);
 map.insert("baz", 3);
@@ -34,8 +29,7 @@ assert_eq!(map.get("bar"), Some(&2));
 assert_eq!(map.get("baz"), Some(&3));
 ```
 
-Benchmarks
------------
+## Benchmarks
 
 ```console
 $ cargo run --example insert_lines --release -- --version 2> /dev/null

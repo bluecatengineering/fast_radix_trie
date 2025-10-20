@@ -1,5 +1,5 @@
 // use radix_trie::{PatriciaMap, PatriciaSet};
-use radix_trie::node::Node;
+use fast_radix_tree::node::Node;
 use std::{
     collections::{BTreeSet, HashSet},
     io::BufRead,

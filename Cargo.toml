@@ -1,5 +1,5 @@
 [package]
-name = "radix_trie"
+name = "fast_radix_tree"
 version = "0.1.0"
 authors = [
 	"Takeru Ohta <phjgt308@gmail.com>",

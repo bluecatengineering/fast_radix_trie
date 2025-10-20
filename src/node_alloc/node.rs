@@ -30,6 +30,26 @@ pub struct Node<V> {
 unsafe impl<V: Send> Send for Node<V> {}
 unsafe impl<V: Sync> Sync for Node<V> {}
 
+impl<V: Clone> Clone for Node<V> {
+    fn clone(&self) -> Self {
+        let mut new_ptr = self.ptr_data().allocate();
+        unsafe {
+            new_ptr.write_header(*self.header());
+            new_ptr.write_label(self.label());
+            if let Some(mut children) = new_ptr.children_ptr() {
+                for child in self.children() {
+                    children.write(child.clone());
+                    children = children.add(1);
+                }
+            }
+            if let Some(val) = self.value().cloned() {
+                new_ptr.write_value(val);
+            }
+            new_ptr.assume_init()
+        }
+    }
+}
+
 impl<V> Node<V> {
     /// Makes a new node.
     /// SAFETY: - label len must not exceed 255
@@ -373,14 +393,6 @@ impl<V> Drop for Node<V> {
         self.ptr_data().dealloc(self.ptr);
     }
 }
-// impl<V: Clone> Clone for Node<V> {
-//     fn clone(&self) -> Self {
-//         let label = self.label();
-//         let value = self.value().cloned();
-//         let children = self.children();
-//         Node::new(label, value, child, sibling)
-//     }
-// }
 
 #[cfg(test)]
 mod tests {

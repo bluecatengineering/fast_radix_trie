@@ -10,7 +10,7 @@
 //! # Examples
 //!
 //! ```
-//! use radix_trie::PatriciaMap;
+//! use fast_radix_tree::PatriciaMap;
 //!
 //! let mut map = PatriciaMap::new();
 //! map.insert("foo", 1);
@@ -28,9 +28,7 @@
 #[macro_use]
 extern crate alloc;
 
-use alloc::borrow::ToOwned;
-use alloc::string::String;
-use alloc::vec::Vec;
+use alloc::{borrow::ToOwned, string::String, vec::Vec};
 use core::cmp::Ordering;
 
 // pub use map::{GenericPatriciaMap, PatriciaMap, StringPatriciaMap};

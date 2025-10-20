@@ -1,5 +1,5 @@
 use criterion::{BatchSize, Criterion, criterion_group, criterion_main};
-use patricia_tree;
+use fast_radix_tree::Node;
 use rand::{Rng, seq::IndexedRandom};
 
 use std::{
@@ -12,7 +12,7 @@ fn bench_longest_common_prefix(c: &mut Criterion) {
 
     group.bench_function("LCP by 8 bytes", |b| {
         b.iter(|| {
-            patricia_tree::longest_common_prefix(
+            fast_radix_tree::longest_common_prefix(
                 black_box(b"abcdefghijklmnopqrstuvwxyz123"),
                 black_box(b"abcdefghijklmnopqrstuvwxyzabc"),
             );
@@ -21,7 +21,7 @@ fn bench_longest_common_prefix(c: &mut Criterion) {
 
     group.bench_function("LCP byte by byte", |b| {
         b.iter(|| {
-            patricia_tree::longest_common_prefix_by_byte(
+            fast_radix_tree::longest_common_prefix_by_byte(
                 black_box(b"abcdefghijklmnopqrstuvwxyz123"),
                 black_box(b"abcdefghijklmnopqrstuvwxyzabc"),
             );
