@@ -7,17 +7,7 @@ use core::{
 
 use alloc::alloc;
 
-use crate::node::Node;
-
-macro_rules! extend {
-    ($expr:expr) => {{
-        let val = match $expr {
-            Ok(tuple) => tuple,
-            Err(_) => unreachable!("Layout extension failed"),
-        };
-        val
-    }};
-}
+use crate::{node::Node, node_common::extend};
 
 const LABEL_OFFSET: isize = core::mem::size_of::<NodeHeader>() as isize;
 

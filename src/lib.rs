@@ -40,24 +40,19 @@ use core::cmp::Ordering;
 // mod tree;
 mod node_common;
 
-// #[cfg(not(feature = "realloc"))]
 #[cfg(feature = "realloc")]
 pub mod node;
-// #[cfg(not(feature = "realloc"))]
 #[cfg(feature = "realloc")]
 mod node_header;
 #[cfg(feature = "realloc")]
 pub(crate) use node_header::*;
 
 #[cfg(not(feature = "realloc"))]
-// #[cfg(feature = "realloc")]
 mod node_alloc;
 #[cfg(not(feature = "realloc"))]
-// #[cfg(feature = "realloc")]
 pub use node_alloc::node;
 
 #[cfg(not(feature = "realloc"))]
-// #[cfg(feature = "realloc")]
 pub(crate) use node_alloc::node_header::*;
 
 pub use node::Node;

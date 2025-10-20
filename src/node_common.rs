@@ -17,7 +17,17 @@ macro_rules! assert_some {
     };
 }
 
-pub(crate) use assert_some;
+macro_rules! extend {
+    ($expr:expr) => {{
+        let val = match $expr {
+            Ok(tuple) => tuple,
+            Err(_) => unreachable!("Layout extension failed"),
+        };
+        val
+    }};
+}
+
+pub(crate) use {assert_some, extend};
 
 pub const MAX_LABEL_LEN: usize = u8::MAX as usize;
 
@@ -32,6 +42,7 @@ impl<V> Node<V> {
         unsafe { PtrData::<V>::label(self.ptr) }
     }
 
+    #[allow(unused)]
     pub(crate) fn label_mut(&mut self) -> &mut [u8] {
         unsafe { PtrData::<V>::label_mut(self.ptr) }
     }
@@ -42,6 +53,7 @@ impl<V> Node<V> {
         unsafe { self.ptr.as_ref() }
     }
 
+    #[allow(unused)]
     #[inline]
     pub(crate) fn header_mut(&mut self) -> &mut NodeHeader {
         unsafe { self.ptr.as_mut() }
@@ -52,17 +64,21 @@ impl<V> Node<V> {
         self.header().ptr_data()
     }
 
+    /// get all children for node as slice
     pub fn children(&self) -> &[Node<V>] {
         unsafe { self.ptr_data().children(self.ptr) }
     }
+    /// get all children for node as mut slice
     pub fn children_mut(&mut self) -> &mut [Node<V>] {
         unsafe { self.ptr_data().children_mut(self.ptr) }
     }
-    // TODO: consider storing first bytes in node? trade memory for lookup speed
+    /// return the first byte of each childs label
     pub(crate) fn children_first_bytes(&self) -> impl Iterator<Item = Option<u8>> {
+        // TODO: consider storing first bytes in node? trade memory for lookup speed
         self.children().iter().map(|n| n.label().first().cloned())
     }
 
+    /// take all the children out of a node and return them
     pub fn take_children(&mut self) -> Option<Vec<Node<V>>> {
         let len = self.children_len();
         if len == 0 {
@@ -81,16 +97,17 @@ impl<V> Node<V> {
         }
         Some(ret)
     }
+    /// return number of children
     pub fn children_len(&self) -> usize {
         self.header().children_len as usize
     }
 
     /// Gets an iterator which traverses the nodes in this tree, in depth first order.
-    // pub fn iter(&self) -> Iter<'_, V> {
-    //     Iter {
-    //         stack: vec![(0, self)],
-    //     }
-    // }
+    pub fn iter(&self) -> Iter<'_, V> {
+        Iter {
+            stack: vec![(0, self)],
+        }
+    }
 
     /// Gets a mutable iterator which traverses the nodes in this tree, in depth first order.
     pub fn iter_mut(&mut self) -> IterMut<'_, V> {
@@ -99,11 +116,11 @@ impl<V> Node<V> {
         }
     }
 
-    // pub(crate) fn iter_descendant(&self) -> Iter<'_, V> {
-    //     Iter {
-    //         stack: vec![(0, self)],
-    //     }
-    // }
+    pub(crate) fn iter_descendant(&self) -> Iter<'_, V> {
+        Iter {
+            stack: vec![(0, self)],
+        }
+    }
 
     pub(crate) fn iter_descendant_mut(&mut self) -> IterMut<'_, V> {
         IterMut {
@@ -189,6 +206,71 @@ impl<V> Node<V> {
         self.get_node_mut(key).and_then(|n| n.value_mut())
     }
 
+    pub(crate) fn get_longest_common_prefix<K: ?Sized + BorrowedBytes>(
+        &self,
+        key: &K,
+    ) -> Option<(usize, &Self)> {
+        let mut cur = self;
+        let mut key = key.as_bytes();
+        let mut matched_len = 0;
+        let mut last_match = None;
+
+        loop {
+            let Some(remaining) = crate::strip_prefix(key, cur.label()) else {
+                return last_match;
+            };
+            key = remaining;
+            matched_len += cur.label_len();
+
+            if cur.value().is_some() {
+                last_match = Some((matched_len, cur));
+            }
+            if key.is_empty() {
+                return last_match;
+            }
+
+            match cur.child_with_first(unsafe { *key.get_unchecked(0) }) {
+                None => {
+                    return last_match;
+                }
+                Some(child) => {
+                    cur = child;
+                }
+            }
+        }
+    }
+
+    pub(crate) fn get_longest_common_prefix_mut<K: ?Sized + BorrowedBytes>(
+        &mut self,
+        key: &K,
+    ) -> Option<(usize, &mut Self)> {
+        let mut cur = self;
+        let mut key = key.as_bytes();
+        let mut matched_len = 0;
+        let mut last_match: Option<(usize, *mut Node<V>)> = None;
+        loop {
+            let Some(remaining) = crate::strip_prefix(key, cur.label()) else {
+                return last_match.map(|(len, ptr)| unsafe { (len, &mut *ptr) });
+            };
+            key = remaining;
+            matched_len += cur.label_len();
+
+            if cur.value().is_some() {
+                last_match = Some((matched_len, cur));
+            }
+            if key.is_empty() {
+                return last_match.map(|(len, ptr)| unsafe { (len, &mut *ptr) });
+            }
+            match cur.child_with_first_mut(unsafe { *key.get_unchecked(0) }) {
+                None => {
+                    return last_match.map(|(len, ptr)| unsafe { (len, &mut *ptr) });
+                }
+                Some(child) => {
+                    cur = child;
+                }
+            }
+        }
+    }
     // pub(crate) fn longest_common_prefix_len<K: ?Sized + BorrowedBytes>(
     //     &self,
     //     key: &K,
@@ -351,6 +433,7 @@ impl<V> Node<V> {
     //     }
     // }
 
+    /// insert key and value into node
     pub fn insert<K: ?Sized + BorrowedBytes>(&mut self, key: &K, value: V) -> Option<V> {
         let mut cur = self;
         let mut key = key.as_bytes();
@@ -635,15 +718,12 @@ pub struct IntoIter<V> {
 mod tests {
     use super::*;
     // use crate::{PatriciaSet, StringPatriciaMap};
-    use core::str;
 
     #[test]
     fn root_works() {
         let node = Node::<()>::root();
         assert!(node.label().is_empty());
         assert!(node.value().is_none());
-        // assert!(node.child().is_none());
-        // assert!(node.sibling().is_none());
         assert!(node.children().is_empty());
     }
 
@@ -853,6 +933,198 @@ mod tests {
         assert_eq!(root.children_len(), 2); // root now has 'apple' and 'te'
         assert_eq!(root.children()[0].label(), b"apple");
         assert_eq!(root.children()[1].label(), b"te");
+    }
+
+    /// Creates a standard test tree with the following structure:
+    /// "" (root, val: 0)
+    ///  ├─ "a" (val: 1)
+    ///  │   └─ "pp"
+    ///  │       ├─ "le" (val: 2)
+    ///  │       └─ "ly" (val: 3)
+    ///  └─ "box" (val: 4)
+    fn create_test_tree_with_root_val() -> Node<u32> {
+        let mut root = Node::root();
+        root.insert("", 0);
+        root.insert("a", 1);
+        root.insert("apple", 2);
+        root.insert("apply", 3);
+        root.insert("box", 4);
+        root
+    }
+
+    /// Creates a standard test tree with the following structure:
+    /// "" (root, val: None)
+    ///  ├─ "a" (val: 1)
+    ///  │   └─ "pp"
+    ///  │       ├─ "le" (val: 2)
+    ///  │       └─ "ly" (val: 3)
+    ///  └─ "box" (val: 4)
+    fn create_test_tree() -> Node<u32> {
+        let mut root = Node::root();
+        root.insert("a", 1);
+        root.insert("apple", 2);
+        root.insert("apply", 3);
+        root.insert("box", 4);
+        root
+    }
+    #[test]
+    fn test_get_node() {
+        let root = create_test_tree();
+
+        // Exact matches
+        assert_eq!(root.get_node("").unwrap().value(), None);
+        assert_eq!(root.get_node("a").unwrap().label(), b"a");
+        assert_eq!(root.get_node("a").unwrap().value(), Some(&1));
+        assert_eq!(root.get_node("apple").unwrap().label(), b"e"); // "e" is the node for "apple"
+        assert_eq!(root.get_node("apply").unwrap().label(), b"y"); // "y" is the node for "apply"
+        assert_eq!(root.get_node("box").unwrap().label(), b"box");
+
+        // Prefix of a node that's not been split on
+        assert!(root.get_node("ap").is_none());
+        assert!(root.get_node("bo").is_none());
+
+        // Non-existent keys
+        assert!(root.get_node("b").is_none());
+        assert!(root.get_node("apples").is_none());
+        assert!(root.get_node("xyz").is_none());
+
+        // Intermediate node without a value
+        let a_node = root.get_node("a").unwrap();
+        let pp_node = a_node
+            .children()
+            .iter()
+            .find(|n| n.label() == b"ppl")
+            .unwrap();
+        assert!(pp_node.value().is_none());
+    }
+
+    #[test]
+    fn test_get_node_mut() {
+        let mut root = create_test_tree();
+
+        // Exact match and mutate
+        let apple_node = root.get_node_mut("apple").unwrap();
+        assert_eq!(apple_node.value(), Some(&2));
+        apple_node.set_value(20);
+        assert_eq!(apple_node.value(), Some(&20));
+
+        // Verify change from root
+        assert_eq!(root.get("apple"), Some(&20));
+
+        // Non-existent key
+        assert!(root.get_node_mut("xyz").is_none());
+    }
+
+    #[test]
+    fn test_get_longest_common_prefix() {
+        let mut root = create_test_tree_with_root_val();
+
+        // Key is shorter than any entry
+        assert_eq!(
+            root.get_longest_common_prefix("")
+                .and_then(|(len, n)| Some((len, n.value()?))),
+            Some((0, &0))
+        );
+        // Root has value 0
+        assert_eq!(
+            root.get_longest_common_prefix("b")
+                .and_then(|(len, n)| Some((len, n.value()?))),
+            Some((0, &0))
+        );
+
+        // Key is a prefix of an entry
+        assert_eq!(
+            root.get_longest_common_prefix("ap")
+                .and_then(|(len, n)| Some((len, n.value()?))),
+            Some((1, &1))
+        ); // "a" is the LCP
+        assert_eq!(
+            root.get_longest_common_prefix("app")
+                .and_then(|(len, n)| Some((len, n.value()?))),
+            Some((1, &1))
+        );
+        assert_eq!(
+            root.get_longest_common_prefix("appl")
+                .and_then(|(len, n)| Some((len, n.value()?))),
+            Some((1, &1))
+        );
+
+        // Key matches an entry exactly
+        assert_eq!(
+            root.get_longest_common_prefix("a")
+                .and_then(|(len, n)| Some((len, n.value()?))),
+            Some((1, &1))
+        );
+        assert_eq!(
+            root.get_longest_common_prefix("apple")
+                .and_then(|(len, n)| Some((len, n.value()?))),
+            Some((5, &2))
+        );
+        assert_eq!(
+            root.get_longest_common_prefix("box")
+                .and_then(|(len, n)| Some((len, n.value()?))),
+            Some((3, &4))
+        );
+
+        // Key extends an entry
+        assert_eq!(
+            root.get_longest_common_prefix("apples")
+                .and_then(|(len, n)| Some((len, n.value()?))),
+            Some((5, &2))
+        );
+        assert_eq!(
+            root.get_longest_common_prefix("boxer")
+                .and_then(|(len, n)| Some((len, n.value()?))),
+            Some((3, &4))
+        );
+
+        // No match beyond root
+        assert_eq!(
+            root.get_longest_common_prefix_mut("xyz")
+                .and_then(|(len, n)| Some((len, &*n.value()?))),
+            Some((0, &0))
+        );
+
+        // Test with a tree where root has no value
+        let mut root_no_val = Node::root();
+        root_no_val.insert("test", 10);
+        assert!(root_no_val.get_longest_common_prefix("t").is_none());
+        assert_eq!(
+            root_no_val
+                .get_longest_common_prefix("testing")
+                .and_then(|(len, n)| Some((len, n.value()?))),
+            Some((4, &10))
+        );
+    }
+
+    #[test]
+    fn test_get_longest_common_prefix_mut() {
+        let mut root = create_test_tree();
+
+        // Find LCP and mutate it
+        let (len, val) = root.get_longest_common_prefix_mut("apples").unwrap();
+        assert_eq!(len, 5);
+        assert_eq!(*val.value_mut().unwrap(), 2);
+        *val.value_mut().unwrap() = 22;
+
+        // Verify the change
+        assert_eq!(root.get("apple"), Some(&22));
+
+        // Find another LCP and mutate
+        let (len, val) = root.get_longest_common_prefix_mut("app").unwrap();
+        assert_eq!(len, 1);
+        assert_eq!(*val.value().unwrap(), 1);
+        *val.value_mut().unwrap() = 11;
+
+        // Verify the change
+        assert_eq!(root.get("a"), Some(&11));
+        assert_eq!(root.get("apple"), Some(&22)); // Previous change should persist
+
+        // No match
+        assert!(dbg!(root.get_longest_common_prefix_mut("xyz")).is_none());
+
+        // Match root
+        assert!(root.get_longest_common_prefix_mut("b").is_none());
     }
     // #[test]
     // fn new_methods() {

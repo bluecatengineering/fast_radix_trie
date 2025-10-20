@@ -11,16 +11,7 @@ use core::{
 use alloc::alloc;
 
 use crate::node_alloc::node::Node;
-
-macro_rules! extend {
-    ($expr:expr) => {{
-        let val = match $expr {
-            Ok(tuple) => tuple,
-            Err(_) => unreachable!("Layout extension failed"),
-        };
-        val
-    }};
-}
+use crate::node_common::extend;
 
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct Flags(u8);
@@ -176,10 +167,11 @@ impl NodeHeader {
             ))));
             (new_layout, Some(offset))
         } else {
-            // This layout is NOT compatible with realloc. Nodes must use alloc/dealloc if they are modified
-            // because the alignment can change
-            // this will minimize memory usage at the cost of slower mutations. branch nodes will not allocate
-            // values if they have no value, and leaf nodes will not be effected by children alignment
+            // This layout is NOT compatible with realloc. Nodes must use alloc/dealloc
+            // if they are modified because the alignment can change
+            // this will minimize memory usage at the cost of slower mutations.
+            // branch nodes will not allocate values if they have no value,
+            // and leaf nodes will not be effected by children alignment
             (layout, None)
         };
 
@@ -190,6 +182,7 @@ impl NodeHeader {
         } else {
             None
         };
+
         PtrData {
             layout: layout.pad_to_align(),
             children_offset,
