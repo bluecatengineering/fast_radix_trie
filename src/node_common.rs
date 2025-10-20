@@ -4,7 +4,8 @@ use crate::{NodeHeader, PtrData};
 use alloc::vec::Vec;
 use core::cmp::Ordering;
 use core::marker::PhantomData;
-use core::mem;
+use core::{fmt, mem};
+use std::collections::VecDeque;
 
 macro_rules! assert_some {
     ($expr:expr) => {
@@ -73,9 +74,13 @@ impl<V> Node<V> {
         unsafe { self.ptr_data().children_mut(self.ptr) }
     }
     /// return the first byte of each childs label
-    pub(crate) fn children_first_bytes(&self) -> impl Iterator<Item = Option<u8>> {
+    pub(crate) fn children_first_bytes(
+        &self,
+    ) -> impl DoubleEndedIterator<Item = u8> + ExactSizeIterator {
         // TODO: consider storing first bytes in node? trade memory for lookup speed
-        self.children().iter().map(|n| n.label().first().cloned())
+        self.children()
+            .iter()
+            .map(|n| *n.label().first().expect("child nodes must have label"))
     }
 
     /// take all the children out of a node and return them
@@ -116,15 +121,17 @@ impl<V> Node<V> {
         }
     }
 
-    pub(crate) fn iter_descendant(&self) -> Iter<'_, V> {
-        Iter {
-            stack: vec![(0, self)],
+    /// Gets an iterator which traverses the nodes in this tree, in breadth first order.
+    pub fn iter_bfs(&self) -> IterBfs<'_, V> {
+        IterBfs {
+            queue: vec![(0, self)].into(),
         }
     }
 
-    pub(crate) fn iter_descendant_mut(&mut self) -> IterMut<'_, V> {
-        IterMut {
-            stack: vec![(0, self)],
+    /// Gets a mutable iterator which traverses the nodes in this tree, in breadth first order.
+    pub fn iter_mut_bfs(&mut self) -> IterMutBfs<'_, V> {
+        IterMutBfs {
+            queue: vec![(0, self)].into(),
         }
     }
 
@@ -164,7 +171,7 @@ impl<V> Node<V> {
     pub(crate) fn child_index_with_first(&self, byte: u8) -> Option<usize> {
         self.children_first_bytes()
             .enumerate()
-            .find(|(_, b)| b.is_some_and(|b| b == byte))
+            .find(|(_, b)| *b == byte)
             .map(|(i, _)| i)
     }
 
@@ -434,6 +441,8 @@ impl<V> Node<V> {
     // }
 
     /// insert key and value into node
+    /// SAFETY:
+    /// caller must not insert an empty label into children. only the root node can have an empty label
     pub fn insert<K: ?Sized + BorrowedBytes>(&mut self, key: &K, value: V) -> Option<V> {
         let mut cur = self;
         let mut key = key.as_bytes();
@@ -498,7 +507,8 @@ impl<V> Node<V> {
                                     let insert_index = cur
                                         .children_first_bytes()
                                         .enumerate()
-                                        .find(|(_, b)| b.is_some_and(|b| b > first_byte))
+                                        // TODO: is this right? >= or > ?
+                                        .find(|(_, b)| *b >= first_byte)
                                         .map(|(i, _)| i)
                                         .unwrap_or(cur.children_len());
 
@@ -523,12 +533,52 @@ impl<V> Node<V> {
     }
 }
 
+impl<V: fmt::Debug> fmt::Debug for Node<V> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let mut stack = vec![(self, 0, 0)];
+
+        while let Some((next, white_indentation, line_indentation)) = stack.pop() {
+            let label = String::from_utf8_lossy(next.label());
+            let value = next
+                .value()
+                .map_or("(-)".to_string(), |val| format!("({val:?})"));
+
+            let prefix = if white_indentation == 0 && line_indentation == 0 {
+                String::new()
+            } else {
+                let whitespace = " ".repeat(white_indentation);
+                let line = "–".repeat(line_indentation - 1);
+                format!("{whitespace}{line}>")
+            };
+
+            writeln!(f, "{prefix}\"{label}\" {value}")?;
+
+            for child in next.children().iter().rev() {
+                let new_line_indentation = 4;
+                let white_indentation = white_indentation + line_indentation + 2;
+                stack.push((child, white_indentation, new_line_indentation));
+            }
+        }
+        Ok(())
+    }
+}
+
+impl<V: PartialEq> PartialEq for Node<V> {
+    fn eq(&self, other: &Self) -> bool {
+        self.label() == other.label()
+            && self.value() == other.value()
+            && self.children() == other.children()
+    }
+}
+
+impl<V: Eq> Eq for Node<V> {}
+
 impl<V> IntoIterator for Node<V> {
     type Item = (usize, Node<V>);
     type IntoIter = IntoIter<V>;
     fn into_iter(self) -> Self::IntoIter {
         IntoIter {
-            stack: vec![(0, self)],
+            stack: vec![(0, self)].into(),
         }
     }
 }
@@ -545,8 +595,30 @@ impl<'a, V: 'a> Iterator for Iter<'a, V> {
     fn next(&mut self) -> Option<Self::Item> {
         if let Some((level, node)) = self.stack.pop() {
             let next_level = level + 1;
-            for child in node.children() {
+            for child in node.children().iter().rev() {
                 self.stack.push((next_level, child))
+            }
+            Some((level, node))
+        } else {
+            None
+        }
+    }
+}
+
+/// An iterator which traverses the nodes in a tree, in breadth first order
+///
+/// The first element of an item is the level of the traversing node.
+#[derive(Debug)]
+pub struct IterBfs<'a, V: 'a> {
+    queue: VecDeque<(usize, &'a Node<V>)>,
+}
+impl<'a, V: 'a> Iterator for IterBfs<'a, V> {
+    type Item = (usize, &'a Node<V>);
+    fn next(&mut self) -> Option<Self::Item> {
+        if let Some((level, node)) = self.queue.pop_front() {
+            let next_level = level + 1;
+            for child in node.children() {
+                self.queue.push_back((next_level, child))
             }
             Some((level, node))
         } else {
@@ -563,25 +635,6 @@ pub struct IterMut<'a, V: 'a> {
     stack: Vec<(usize, &'a mut Node<V>)>,
 }
 
-/// A reference to an immediate node (without child or sibling) with its
-/// label and a mutable reference to its value, if present.
-pub struct NodeMut<'a, V: 'a> {
-    pub(crate) label: &'a [u8],
-    pub(crate) value: Option<&'a mut V>,
-    pub(crate) children: Option<&'a mut [Node<V>]>,
-}
-impl<'a, V: 'a> NodeMut<'a, V> {
-    /// Returns the label of the node.
-    pub fn label(&self) -> &'a [u8] {
-        self.label
-    }
-
-    /// Converts into a mutable reference to the value.
-    pub fn into_value_mut(self) -> Option<&'a mut V> {
-        self.value
-    }
-}
-
 impl<'a, V: 'a> Iterator for IterMut<'a, V> {
     type Item = (usize, NodeMut<'a, V>);
     fn next(&mut self) -> Option<Self::Item> {
@@ -589,8 +642,82 @@ impl<'a, V: 'a> Iterator for IterMut<'a, V> {
             let mut node = node.as_mut();
             let next_level = level + 1;
             if let Some(children) = node.children.take() {
-                for child in children {
+                for child in children.iter_mut().rev() {
                     self.stack.push((next_level, child))
+                }
+            }
+            Some((level, node))
+        } else {
+            None
+        }
+    }
+}
+
+/// A mutable iterator which traverses the nodes in a tree, in breadth first order.
+///
+/// The first element of an item is the level of the traversing node.
+#[derive(Debug)]
+pub struct IterMutBfs<'a, V: 'a> {
+    queue: VecDeque<(usize, &'a mut Node<V>)>,
+}
+
+impl<'a, V: 'a> Iterator for IterMutBfs<'a, V> {
+    type Item = (usize, NodeMut<'a, V>);
+    fn next(&mut self) -> Option<Self::Item> {
+        if let Some((level, node)) = self.queue.pop_front() {
+            let mut node = node.as_mut();
+            let next_level = level + 1;
+            if let Some(children) = node.children.take() {
+                for child in children {
+                    self.queue.push_back((next_level, child))
+                }
+            }
+            Some((level, node))
+        } else {
+            None
+        }
+    }
+}
+
+/// An owning iterator which traverses the nodes in a tree, in depth first order.
+///
+/// The first element of an item is the level of the traversing node.
+#[derive(Debug)]
+pub struct IntoIter<V> {
+    stack: Vec<(usize, Node<V>)>,
+}
+impl<V> Iterator for IntoIter<V> {
+    type Item = (usize, Node<V>);
+    fn next(&mut self) -> Option<Self::Item> {
+        if let Some((level, mut node)) = self.stack.pop() {
+            let next_level = level + 1;
+            if let Some(children) = node.take_children() {
+                for child in children.into_iter().rev() {
+                    self.stack.push((next_level, child))
+                }
+            }
+            Some((level, node))
+        } else {
+            None
+        }
+    }
+}
+
+/// An owning iterator which traverses the nodes in a tree, in breadth first order.
+///
+/// The first element of an item is the level of the traversing node.
+#[derive(Debug)]
+pub struct IntoIterBfs<V> {
+    queue: VecDeque<(usize, Node<V>)>,
+}
+impl<V> Iterator for IntoIterBfs<V> {
+    type Item = (usize, Node<V>);
+    fn next(&mut self) -> Option<Self::Item> {
+        if let Some((level, mut node)) = self.queue.pop_front() {
+            let next_level = level + 1;
+            if let Some(children) = node.take_children() {
+                for child in children {
+                    self.queue.push_back((next_level, child))
                 }
             }
             Some((level, node))
@@ -662,27 +789,22 @@ where
     }
 }
 
-/// An owning iterator which traverses the nodes in a tree, in depth first order.
-///
-/// The first element of an item is the level of the traversing node.
-#[derive(Debug)]
-pub struct IntoIter<V> {
-    stack: Vec<(usize, Node<V>)>,
+/// A reference to an immediate node (without child or sibling) with its
+/// label and a mutable reference to its value, if present.
+pub struct NodeMut<'a, V: 'a> {
+    pub(crate) label: &'a [u8],
+    pub(crate) value: Option<&'a mut V>,
+    pub(crate) children: Option<&'a mut [Node<V>]>,
 }
-impl<V> Iterator for IntoIter<V> {
-    type Item = (usize, Node<V>);
-    fn next(&mut self) -> Option<Self::Item> {
-        if let Some((level, mut node)) = self.stack.pop() {
-            let next_level = level + 1;
-            if let Some(children) = node.take_children() {
-                for child in children {
-                    self.stack.push((next_level, child))
-                }
-            }
-            Some((level, node))
-        } else {
-            None
-        }
+impl<'a, V: 'a> NodeMut<'a, V> {
+    /// Returns the label of the node.
+    pub fn label(&self) -> &'a [u8] {
+        self.label
+    }
+
+    /// Converts into a mutable reference to the value.
+    pub fn into_value_mut(self) -> Option<&'a mut V> {
+        self.value
     }
 }
 
@@ -742,15 +864,15 @@ mod tests {
         // with children, including one with an empty label
         let child1 = Node::<()>::new(b"apple", [], None);
         let child2 = Node::<()>::new(b"banana", [], None);
-        let child3 = Node::<()>::new(b"", [], None); // empty label
         let child4 = Node::<()>::new(b"cherry", [], None);
-        let parent = Node::new(b"parent", [child1, child2, child3, child4], None);
+        let child3 = Node::<()>::new(b"mango", [], None);
+        let parent = Node::new(b"", [child1, child2, child3, child4], None);
 
         let mut first_bytes = parent.children_first_bytes();
-        assert_eq!(first_bytes.next(), Some(Some(b'a')));
-        assert_eq!(first_bytes.next(), Some(Some(b'b')));
-        assert_eq!(first_bytes.next(), Some(None));
-        assert_eq!(first_bytes.next(), Some(Some(b'c')));
+        assert_eq!(first_bytes.next(), Some(b'a'));
+        assert_eq!(first_bytes.next(), Some(b'b'));
+        assert_eq!(first_bytes.next(), Some(b'm'));
+        assert_eq!(first_bytes.next(), Some(b'c'));
         assert_eq!(first_bytes.next(), None);
     }
 
@@ -793,7 +915,7 @@ mod tests {
         let child2 = Node::new(b"b", [], None);
         let child3 = Node::new(b"c", [], None);
         let child4 = Node::new(b"d", [], None);
-        let mut parent = Node::new(b"parent", [child1, child2, child3, child4], Some(100));
+        let mut parent = Node::new(b"", [child1, child2, child3, child4], Some(100));
 
         // Remove from the middle
         let removed = unsafe { parent.remove_child(1) };
@@ -822,7 +944,7 @@ mod tests {
         assert_eq!(removed.label(), b"c");
         assert_eq!(parent.children_len(), 0);
         assert!(parent.children().is_empty());
-        assert_eq!(parent.label(), b"parent");
+        assert_eq!(parent.label(), b"");
         assert_eq!(parent.value(), Some(&100));
     }
 
@@ -1089,10 +1211,11 @@ mod tests {
         // Verify the change
         assert_eq!(root.get("apple"), Some(&22));
 
-        // Find another LCP and mutate
+        // Find another LCP and mutate (matches "a")
         let (len, val) = root.get_longest_common_prefix_mut("app").unwrap();
         assert_eq!(len, 1);
         assert_eq!(*val.value().unwrap(), 1);
+        // mutate "a"
         *val.value_mut().unwrap() = 11;
 
         // Verify the change
@@ -1100,7 +1223,7 @@ mod tests {
         assert_eq!(root.get("apple"), Some(&22)); // Previous change should persist
 
         // No match
-        assert!(dbg!(root.get_longest_common_prefix_mut("xyz")).is_none());
+        assert!(root.get_longest_common_prefix_mut("xyz").is_none());
 
         // Match root
         assert!(root.get_longest_common_prefix_mut("b").is_none());
@@ -1120,12 +1243,26 @@ mod tests {
         assert_eq!(
             nodes,
             [
-                // TODO: is this order wrong?
                 (0, "".as_ref()),
-                (1, "foo".as_ref()),
                 (1, "ba".as_ref()),
-                (2, "z".as_ref()),
                 (2, "r".as_ref()),
+                (2, "z".as_ref()),
+                (1, "foo".as_ref()),
+            ]
+        );
+
+        let nodes = set
+            .iter_bfs()
+            .map(|(level, node)| (level, node.label()))
+            .collect::<Vec<_>>();
+        assert_eq!(
+            nodes,
+            [
+                (0, "".as_ref()),
+                (1, "ba".as_ref()),
+                (1, "foo".as_ref()),
+                (2, "r".as_ref()),
+                (2, "z".as_ref()),
             ]
         );
     }
@@ -1145,10 +1282,25 @@ mod tests {
             nodes,
             [
                 (0, "".as_ref()),
-                (1, "foo".as_ref()),
                 (1, "ba".as_ref()),
-                (2, "z".as_ref()),
                 (2, "r".as_ref()),
+                (2, "z".as_ref()),
+                (1, "foo".as_ref()),
+            ]
+        );
+
+        let nodes = set
+            .iter_mut_bfs()
+            .map(|(level, node)| (level, node.label()))
+            .collect::<Vec<_>>();
+        assert_eq!(
+            nodes,
+            [
+                (0, "".as_ref()),
+                (1, "ba".as_ref()),
+                (1, "foo".as_ref()),
+                (2, "r".as_ref()),
+                (2, "z".as_ref()),
             ]
         );
     }
