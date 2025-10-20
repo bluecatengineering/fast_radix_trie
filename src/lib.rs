@@ -122,7 +122,7 @@ impl BorrowedBytes for [u8] {
     }
 
     fn strip_common_prefix(&self, bytes: &[u8]) -> &Self {
-        let (i, _) = longest_common_prefix(self, bytes);
+        let (i, _) = crate::longest_common_prefix(self, bytes);
         &self[i..]
     }
 
@@ -135,7 +135,7 @@ impl BorrowedBytes for [u8] {
     }
 
     fn longest_common_prefix(&self, bytes: &[u8]) -> (usize, Option<Ordering>) {
-        longest_common_prefix(self, bytes)
+        crate::longest_common_prefix(self, bytes)
     }
 }
 
@@ -181,8 +181,9 @@ impl BorrowedBytes for str {
     }
 }
 
+/// uses memchr to strip the prefix from the haystack if it is a valid prefix
 #[inline(always)]
-pub(crate) fn strip_prefix<'a>(haystack: &'a [u8], prefix: &[u8]) -> Option<&'a [u8]> {
+pub fn strip_prefix<'a>(haystack: &'a [u8], prefix: &[u8]) -> Option<&'a [u8]> {
     if !memchr::arch::all::is_prefix(haystack, prefix) {
         None
     } else {

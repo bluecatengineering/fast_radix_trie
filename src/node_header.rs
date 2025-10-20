@@ -234,4 +234,18 @@ impl<V> PtrData<V> {
             &mut []
         }
     }
+
+    #[inline]
+    pub(crate) unsafe fn children_mut_opt<'a>(
+        &self,
+        header_ptr: NonNull<NodeHeader>,
+    ) -> Option<&'a mut [Node<V>]> {
+        match unsafe { self.children_ptr(header_ptr) } {
+            Some(ptr) => unsafe {
+                let children_len = (*header_ptr.as_ptr()).children_len as usize;
+                Some(slice::from_raw_parts_mut(ptr.as_ptr(), children_len))
+            },
+            None => None,
+        }
+    }
 }

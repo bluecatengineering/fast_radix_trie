@@ -88,7 +88,7 @@ impl<V> Node<V> {
     /// Returns mutable references to the node itself with its sibling and child
     pub fn as_mut(&mut self) -> NodeMut<'_, V> {
         let value = unsafe { self.ptr_data().value_ptr(self.ptr).as_mut() }.as_mut();
-        let children = unsafe { self.ptr_data().children_mut(self.ptr) };
+        let children = unsafe { self.ptr_data().children_mut_opt(self.ptr) };
 
         NodeMut {
             label: self.label(),
