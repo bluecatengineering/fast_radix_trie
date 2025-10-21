@@ -5,7 +5,11 @@
 [![Actions Status](https://github.com/sile/patricia_tree/workflows/CI/badge.svg)](https://github.com/sile/patricia_tree/actions)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-Memory-efficient data structures based on radix tree. Offers two impls, one optimized for minimum memory usage, and one optimized for mutations that uses `realloc`.
+Memory-efficient data structures based on radix tree. Offers two impls, one optimized for absolute minimum memory usage (minimizing padding/alignment where possible), and one optimized for mutations that uses `realloc`.
+
+Originally based on [patricia_tree](https://github.com/sile/patricia_tree), but whereas patricia tree uses a child/sibling pointer for each node, where siblings are traversed in a linked list to find nodes at the same level, this radix tree stores children nodes directly inline for faster traversal. It costs a small bit more memory, around 5-10% depending on the data set, but can be up to 4x faster to build or traverse the data structure. Moreso if you use the `realloc` impl which can speed up mutations by resizing nodes instead of allocating new ones.
+
+This library uses unsafe and raw pointers ubiquitously because nodes are dynamically sized to store node labels and children pointers at dynamic offsets inline in each node allocation. By doing this we can drastically reduce memory usage.
 
 [Documentation](https://docs.rs/fast_radix_tree)
 
