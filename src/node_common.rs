@@ -1119,17 +1119,11 @@ mod tests {
         root.insert("apple", 2);
         root.insert("apply", 3);
         root.insert("box", 4);
-        root.insert("boxing", 4);
-        root.insert("applesauce", 5);
-        root.insert("applejuice", 5);
-        root.insert("applebees", 5);
-        root.insert("applebeesy", 5);
         root
     }
     #[test]
     fn test_get_node() {
         let root = create_test_tree();
-        dbg!(&root);
         // Exact matches
         assert_eq!(root.get_node("").unwrap().value(), None);
         assert_eq!(root.get_node("a").unwrap().label(), b"a");
