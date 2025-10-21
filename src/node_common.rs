@@ -1,11 +1,7 @@
 //! node common methods
-use crate::{BorrowedBytes, Bytes, Node};
-use crate::{NodeHeader, PtrData};
-use alloc::vec::Vec;
-use core::cmp::Ordering;
-use core::marker::PhantomData;
-use core::{fmt, mem};
-use std::collections::VecDeque;
+use crate::{BorrowedBytes, Bytes, Node, NodeHeader, PtrData};
+use alloc::{collections::VecDeque, string::String, vec::Vec};
+use core::{cmp::Ordering, fmt, marker::PhantomData, mem};
 
 macro_rules! assert_some {
     ($expr:expr) => {
@@ -437,6 +433,59 @@ impl<V> Node<V> {
     //         None
     //     }
     // }
+
+    pub fn remove<K: ?Sized + BorrowedBytes>(&mut self, key: &K) -> Option<V> {
+        // Find the index of child
+        let key = key.as_bytes();
+        let i = self.child_index_with_first(*key.first()?)?;
+        let child = &mut self.children_mut()[i];
+
+        let suffix = crate::strip_prefix(key, child.label())?;
+        if suffix.is_empty() {
+            // The child's label is equal to the key, so we remove the child.
+            let value = child.take_value();
+
+            if child.children().is_empty() {
+                // If the child is a leaf, we remove the child node itself.
+                unsafe {
+                    self.remove_child(i);
+                }
+            } else {
+                // If there's a single grandchild,
+                // we merge the grandchild into the child.
+                child.try_merge_child();
+            }
+
+            value
+        } else {
+            let value = child.remove(suffix);
+            child.try_merge_child();
+            value
+        }
+    }
+
+    /// merge child if we only have one child
+    pub fn try_merge_child(&mut self) {
+        if self.value().is_some() || self.children_len() != 1 {
+            return;
+        }
+        let old_parent = crate::NodePtrAndData {
+            ptr: self.ptr,
+            ptr_data: self.ptr_data(),
+        };
+        // SAFETY:
+        // - we know there is exactly 1 child
+        let mut child: Node<V> = unsafe { assert_some!(old_parent.children_ptr()).read() };
+        // merge child label
+        child.prefix_label(self.label());
+        // SAFETY:
+        // - dealloc old node and set child to parent
+        // - dont drop children or data since they were copied
+        unsafe {
+            old_parent.ptr_data.dealloc_forget(old_parent.ptr);
+        }
+        self.ptr = child.into_ptr_forget();
+    }
 
     /// insert key and value into node
     /// SAFETY:
@@ -1302,6 +1351,132 @@ mod tests {
                 (2, "z".as_ref()),
             ]
         );
+    }
+
+    #[test]
+    fn test_prefix_label() {
+        let child = Node::new(b"ld", [], Some(2));
+        let mut node = Node::new(b"wor", [child], Some(1));
+
+        node.prefix_label(b"hello ");
+
+        assert_eq!(node.label(), b"hello wor");
+        assert_eq!(node.value(), Some(&1));
+        assert_eq!(node.children_len(), 1);
+        assert_eq!(node.children()[0].label(), b"ld");
+        assert_eq!(node.children()[0].value(), Some(&2));
+    }
+
+    #[test]
+    fn test_try_merge_child() {
+        // Case 1: Node has no value and one child -> should merge.
+        let child = Node::new(b"c", [], Some(3));
+        let mut node = Node::new(b"b", [child], None); // No value
+        node.try_merge_child();
+        // should merge
+        assert_eq!(node.label(), b"bc");
+        assert_eq!(node.value(), Some(&3));
+        assert_eq!(node.children_len(), 0);
+
+        // Case 2: Node has a value -> should NOT merge.
+        let child = Node::new(b"c", [], Some(3));
+        let mut node = Node::new(b"b", [child], Some(2)); // Has a value
+        let cloned_node = node.clone();
+        node.try_merge_child();
+        // should not merge
+        assert_eq!(node.label(), b"b");
+        assert_eq!(
+            node, cloned_node,
+            "Should not merge when parent has a value"
+        );
+
+        // Case 3: Node has multiple children -> should NOT merge.
+        let child1 = Node::new(b"c", [], Some(3));
+        let child2 = Node::new(b"d", [], Some(4));
+        let mut node = Node::new(b"b", [child1, child2], None); // No value, but 2 children
+        let cloned_node = node.clone();
+        node.try_merge_child();
+        assert_eq!(node.label(), b"b");
+        assert_eq!(node.children_len(), 2);
+        assert_eq!(
+            node, cloned_node,
+            "Should not merge when parent has multiple children"
+        );
+
+        // Case 4: Node has no children -> should do nothing.
+        let mut node: Node<u32> = Node::new(b"b", [], None);
+        let cloned_node = node.clone();
+        node.try_merge_child();
+        assert_eq!(
+            node, cloned_node,
+            "Should not panic or change when node has no children"
+        );
+    }
+
+    #[test]
+    fn test_try_merge_child_remove() {
+        let mut root = Node::root();
+        root.insert("a", 1);
+        root.insert("ab", 2);
+        root.insert("abc", 3);
+
+        // Tree is: "" -> "a" (val:1) -> "b" (val:2) -> "c" (val:3)
+        // Remove "ab". This leaves node "b" with no value and one child "c".
+        // `try_merge_child` should be called on "b", merging it with "c".
+        assert_eq!(root.remove("ab"), Some(2));
+
+        // Check that node "b" has merged with "c" to become "bc".
+        let node_a = root.get_node("a").unwrap();
+        assert_eq!(node_a.children_len(), 1);
+        let merged_node = &node_a.children()[0];
+        assert_eq!(merged_node.label(), b"bc");
+        assert_eq!(merged_node.value(), Some(&3));
+
+        // Now, let's verify the whole tree structure via get.
+        assert_eq!(root.get("a"), Some(&1));
+        assert_eq!(root.get("ab"), None); // Was removed
+        assert_eq!(root.get("abc"), Some(&3)); // Still accessible via the merged node
+
+        // re-insert "ab"
+        root.insert("ab", 2);
+        assert_eq!(root.get("ab"), Some(&2));
+    }
+
+    #[test]
+    fn test_try_merge_child_integration() {
+        // Scenario 1: A node with two children has one removed, leaving one.
+        // The parent node has no value, so it should merge with the remaining child.
+        let mut root = Node::root();
+        root.insert("apply", 1);
+        root.insert("apple", 2);
+        // Tree is: "" -> "appl" -> ["y"(v:1), "e"(v:2)]
+        // The "appl" node has no value.
+        assert!(root.get_node("appl").unwrap().value().is_none());
+
+        // Remove "apply". This leaves "appl" with one child, "e".
+        assert_eq!(root.remove("apply"), Some(1));
+
+        // "appl" should merge with "e" to become "apple".
+        // The root should now have one child, "apple".
+        assert_eq!(root.children_len(), 1);
+        let merged_node = &root.children()[0];
+        assert_eq!(merged_node.label(), b"apple");
+        assert_eq!(merged_node.value(), Some(&2));
+
+        // Scenario 2: A parent with a value should NOT merge, even if left with one child.
+        let mut root = Node::root();
+        root.insert("a", 10); // Parent "a" has a value.
+        root.insert("ab", 2);
+        root.insert("ac", 3);
+
+        // Remove "ac". Node "a" is left with one child "b".
+        assert_eq!(root.remove("ac"), Some(3));
+
+        // Node "a" should NOT merge because it has a value.
+        let node_a = root.get_node("a").unwrap();
+        assert_eq!(node_a.value(), Some(&10));
+        assert_eq!(node_a.children_len(), 1);
+        assert_eq!(node_a.children()[0].label(), b"b");
     }
 
     // #[test]

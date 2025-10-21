@@ -71,6 +71,11 @@ impl<V> NodePtrAndData<V> {
     }
 
     #[inline]
+    pub(crate) unsafe fn label_ptr(&self) -> NonNull<u8> {
+        unsafe { self.ptr.byte_offset(LABEL_OFFSET).cast() }
+    }
+
+    #[inline]
     pub(crate) unsafe fn write_label(&mut self, label: &[u8]) {
         unsafe {
             ptr::copy_nonoverlapping(
@@ -155,6 +160,18 @@ impl<V> PtrData<V> {
                 ptr,
                 ptr_data: self,
             }
+        }
+    }
+
+    /// Deallocates the memory block without dropping its contents (children/value).
+    ///
+    /// # Safety
+    /// This is only safe to call when ownership of the contents has been
+    /// moved elsewhere (e.g., via `ptr::copy` or `ptr::read`).
+    #[inline]
+    pub(crate) unsafe fn dealloc_forget(self, header_ptr: NonNull<NodeHeader>) {
+        unsafe {
+            alloc::dealloc(header_ptr.as_ptr().cast(), self.layout);
         }
     }
 

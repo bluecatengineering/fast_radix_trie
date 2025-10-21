@@ -13,7 +13,6 @@ use core::{
 ///
 /// Note that this is a low level building block.
 /// Usually it is recommended to use more high level data structures (e.g., `PatriciaTree`).
-#[derive(Debug)]
 pub struct Node<V> {
     // alignment: will be 2 on nodes with no children and/or no value
     // if it has children then 8 on x86-64 and more if V is wider
@@ -108,7 +107,7 @@ impl<V> Node<V> {
         } else {
             None
         };
-        let children = unsafe { self.ptr_data().children_mut(self.ptr) };
+        let children = unsafe { self.ptr_data().children_mut_opt(self.ptr) };
 
         NodeMut {
             label: self.label(),
@@ -174,8 +173,54 @@ impl<V> Node<V> {
             old_ptr.ptr_data.dealloc_forget(old_ptr.ptr);
         }
     }
+
+    pub fn prefix_label(&mut self, prefix: &[u8]) {
+        let new_header = NodeHeader {
+            flags: self.flags(),
+            label_len: (prefix.len() + self.label_len()) as u8,
+            children_len: self.children_len() as u8,
+        };
+
+        let old_label_len = self.label_len();
+        // allocate new node
+        let mut new_ptr = new_header.ptr_data().allocate();
+        let old_ptr = NodePtrAndData {
+            ptr: self.ptr,
+            ptr_data: self.ptr_data(),
+        };
+        let value = self.take_value();
+
+        unsafe {
+            // update header value/label
+            new_ptr.write_header(new_header);
+
+            // write merged label
+            let new_label_ptr = new_ptr.label_ptr().as_ptr();
+            // Copy the new prefix.
+            new_label_ptr.copy_from_nonoverlapping(prefix.as_ptr(), prefix.len());
+            // Copy the original label as suffix
+            new_label_ptr
+                .add(prefix.len())
+                .copy_from_nonoverlapping(old_ptr.label_ptr().as_ptr(), old_label_len);
+
+            if let Some(new_child_ptr) = new_ptr.children_ptr() {
+                if let Some(old_child_ptr) = old_ptr.children_ptr() {
+                    new_child_ptr.copy_from(old_child_ptr, new_header.children_len as usize);
+                }
+            }
+
+            if let Some(val) = value {
+                new_ptr.write_value(val);
+            }
+            // re-assign ptr to avoid Drop
+            self.ptr = new_ptr.assume_init().into_ptr_forget();
+            // dealloc old node without drop
+            old_ptr.ptr_data.dealloc_forget(old_ptr.ptr);
+        }
+    }
+
     /// forget self so Drop is not called and return the ptr
-    fn into_ptr_forget(self) -> NonNull<NodeHeader> {
+    pub(crate) fn into_ptr_forget(self) -> NonNull<NodeHeader> {
         let ptr = self.ptr;
         mem::forget(self);
         ptr

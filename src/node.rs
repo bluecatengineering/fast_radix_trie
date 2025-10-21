@@ -159,8 +159,64 @@ impl<V> Node<V> {
             self.ptr = new_ptr.assume_init().into_ptr_forget();
         }
     }
+
+    pub fn prefix_label(&mut self, prefix: &[u8]) {
+        let new_header = NodeHeader {
+            label_len: (prefix.len() + self.label_len()) as u8,
+            children_len: self.children_len() as u8,
+        };
+        let old_label_len = self.label_len();
+        let value = self.take_value();
+        let new_ptr_data = new_header.ptr_data();
+        let old_ptr_data = self.ptr_data();
+        debug_assert!(
+            old_ptr_data.layout.size() <= new_ptr_data.layout.size(),
+            "When prepending a prefix to the label, the allocation size should not decrease."
+        );
+        unsafe {
+            let raw_ptr = alloc::alloc::realloc(
+                self.ptr.as_ptr().cast(),
+                old_ptr_data.layout,
+                new_ptr_data.layout.size(),
+            )
+            .cast();
+
+            let Some(raw_ptr) = NonNull::new(raw_ptr) else {
+                alloc::alloc::handle_alloc_error(new_ptr_data.layout);
+            };
+
+            let mut new_ptr = NodePtrAndData {
+                ptr: raw_ptr,
+                ptr_data: new_ptr_data,
+            };
+            let old_ptr = NodePtrAndData {
+                ptr: raw_ptr,
+                ptr_data: old_ptr_data,
+            };
+
+            // write right to left since we are expanding
+            new_ptr.write_value(value);
+            if let Some(new_child_ptr) = new_ptr.children_ptr() {
+                if let Some(old_child_ptr) = old_ptr.children_ptr() {
+                    new_child_ptr.copy_from(old_child_ptr, new_header.children_len as usize);
+                }
+            }
+            // write merged label
+            let new_label_ptr = new_ptr.label_ptr().as_ptr();
+            // shift the suffix
+            new_label_ptr
+                .add(prefix.len())
+                .copy_from(old_ptr.label_ptr().as_ptr(), old_label_len);
+            // copy the prefix
+            new_label_ptr.copy_from_nonoverlapping(prefix.as_ptr(), prefix.len());
+
+            new_ptr.write_header(new_header);
+            self.ptr = new_ptr.assume_init().into_ptr_forget();
+        }
+    }
+
     /// forget self so Drop is not called and return the ptr
-    fn into_ptr_forget(self) -> NonNull<NodeHeader> {
+    pub(crate) fn into_ptr_forget(self) -> NonNull<NodeHeader> {
         let ptr = self.ptr;
         mem::forget(self);
         ptr
@@ -186,20 +242,20 @@ impl<V> Node<V> {
         let old_layout = self.ptr_data().layout;
         // TODO: could use ptr::copy since we use realloc
         let value = self.take_value();
+
         let old_ptr = NodePtrAndData {
             ptr: self.ptr,
             ptr_data: self.ptr_data(),
+        };
+        let mut new_ptr = NodePtrAndData {
+            ptr: self.ptr,
+            ptr_data: new_ptr_data,
         };
 
         unsafe {
             // get child at i
             let removed_child = assert_some!(old_ptr.children_ptr()).add(i).read();
             // child.drop_in_place(); // if we want to drop instead of return
-
-            let mut new_ptr = NodePtrAndData {
-                ptr: self.ptr,
-                ptr_data: new_ptr_data,
-            };
             // write data in left to right order since we're shrinking
             new_ptr.write_header(new_header);
             // shift children from [i+1..] to [i..]

@@ -120,6 +120,12 @@ impl<V> NodePtrAndData<V> {
     pub(crate) unsafe fn value_ptr(&self) -> Option<NonNull<V>> {
         unsafe { self.ptr_data.value_ptr(self.ptr, Flags::VALUE_INITIALIZED) }
     }
+
+    #[inline]
+    pub(crate) unsafe fn label_ptr(&self) -> NonNull<u8> {
+        unsafe { self.ptr.byte_offset(LABEL_OFFSET).cast() }
+    }
+
     #[inline]
     pub(crate) unsafe fn write_label(&mut self, label: &[u8]) {
         unsafe {
@@ -326,5 +332,19 @@ impl<V> PtrData<V> {
             }
         }
         None
+    }
+
+    #[inline]
+    pub(crate) unsafe fn children_mut_opt<'a>(
+        &self,
+        header_ptr: NonNull<NodeHeader>,
+    ) -> Option<&'a mut [Node<V>]> {
+        match unsafe { self.children_ptr(header_ptr) } {
+            Some(ptr) => unsafe {
+                let children_len = (*header_ptr.as_ptr()).children_len as usize;
+                Some(slice::from_raw_parts_mut(ptr.as_ptr(), children_len))
+            },
+            None => None,
+        }
     }
 }
