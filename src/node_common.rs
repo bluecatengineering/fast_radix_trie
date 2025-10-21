@@ -582,9 +582,13 @@ impl<V> Node<V> {
 
 impl<V: fmt::Debug> fmt::Debug for Node<V> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let mut stack = vec![(self, 0, 0)];
+        const HORIZ: char = '─';
+        // const VERT: char = '|';
+        const BRANCH: char = '├';
+        const END: char = '└';
+        let mut stack = vec![(self, 0, 0, false)];
 
-        while let Some((next, white_indentation, line_indentation)) = stack.pop() {
+        while let Some((next, white_indentation, line_indentation, last)) = stack.pop() {
             let label = String::from_utf8_lossy(next.label());
             let value = next
                 .value()
@@ -595,16 +599,17 @@ impl<V: fmt::Debug> fmt::Debug for Node<V> {
                 String::new()
             } else {
                 let whitespace = " ".repeat(white_indentation);
-                let line = "–".repeat(line_indentation - 1);
-                format!("{whitespace}{line}>")
+                let line = " ".repeat(line_indentation - 1);
+                let branch_char = if last { END } else { BRANCH };
+                format!("{whitespace}{line}{branch_char}{HORIZ}")
             };
 
             writeln!(f, "{prefix}\"{label}\" {value}")?;
-
-            for child in next.children().iter().rev() {
+            for (i, child) in next.children().iter().rev().enumerate() {
                 let new_line_indentation = 4;
                 let white_indentation = white_indentation + line_indentation + 2;
-                stack.push((child, white_indentation, new_line_indentation));
+                let last = i == 0;
+                stack.push((child, white_indentation, new_line_indentation, last));
             }
         }
         Ok(())
@@ -1114,12 +1119,17 @@ mod tests {
         root.insert("apple", 2);
         root.insert("apply", 3);
         root.insert("box", 4);
+        root.insert("boxing", 4);
+        root.insert("applesauce", 5);
+        root.insert("applejuice", 5);
+        root.insert("applebees", 5);
+        root.insert("applebeesy", 5);
         root
     }
     #[test]
     fn test_get_node() {
         let root = create_test_tree();
-
+        dbg!(&root);
         // Exact matches
         assert_eq!(root.get_node("").unwrap().value(), None);
         assert_eq!(root.get_node("a").unwrap().label(), b"a");
