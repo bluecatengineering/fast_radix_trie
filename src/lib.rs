@@ -37,8 +37,8 @@ use core::cmp::Ordering;
 // pub mod map;
 // pub mod set;
 
-// mod tree;
 mod node_common;
+// mod tree;
 
 #[cfg(feature = "realloc")]
 pub mod node;

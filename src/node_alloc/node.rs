@@ -174,10 +174,22 @@ impl<V> Node<V> {
         }
     }
 
+    /// will prefix the current nodes' label with `prefix`
     pub fn prefix_label(&mut self, prefix: &[u8]) {
+        self.set_label(prefix, true)
+    }
+
+    /// will reallocate node with label set to new_label. This can seriously
+    /// break your trie if called on nodes!
+    #[inline]
+    pub fn set_label(&mut self, new_label: &[u8], prefix: bool) {
         let new_header = NodeHeader {
             flags: self.flags(),
-            label_len: (prefix.len() + self.label_len()) as u8,
+            label_len: if prefix {
+                new_label.len() + self.label_len()
+            } else {
+                new_label.len()
+            } as u8,
             children_len: self.children_len() as u8,
         };
 
@@ -196,12 +208,14 @@ impl<V> Node<V> {
 
             // write merged label
             let new_label_ptr = new_ptr.label_ptr().as_ptr();
-            // Copy the new prefix.
-            new_label_ptr.copy_from_nonoverlapping(prefix.as_ptr(), prefix.len());
-            // Copy the original label as suffix
-            new_label_ptr
-                .add(prefix.len())
-                .copy_from_nonoverlapping(old_ptr.label_ptr().as_ptr(), old_label_len);
+            // Copy the new label
+            new_label_ptr.copy_from_nonoverlapping(new_label.as_ptr(), new_label.len());
+            if prefix {
+                // Copy the original label as suffix
+                new_label_ptr
+                    .add(new_label.len())
+                    .copy_from_nonoverlapping(old_ptr.label_ptr().as_ptr(), old_label_len);
+            }
 
             if let Some(new_child_ptr) = new_ptr.children_ptr() {
                 if let Some(old_child_ptr) = old_ptr.children_ptr() {

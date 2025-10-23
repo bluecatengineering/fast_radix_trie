@@ -203,6 +203,69 @@ impl<V> Node<V> {
         }
     }
 
+    pub(crate) fn split_by_prefix<K: ?Sized + BorrowedBytes>(&mut self, key: &K) -> Option<Self> {
+        let mut cur = self;
+        let key = key.as_bytes();
+        let mut suffix = key;
+        let mut parent: *mut Node<V> = &raw mut *cur;
+        loop {
+            let Some(key_suffix) = crate::strip_prefix(suffix, cur.label()) else {
+                break;
+            };
+            suffix = key_suffix;
+            match key_suffix.first() {
+                None => break,
+                Some(first) => {
+                    parent = &raw mut *cur;
+                    cur = cur.child_with_first_mut(*first)?;
+                }
+            }
+        }
+        // parent should always point to something
+        let parent = unsafe { &mut *parent };
+
+        // SAFETY: using `cur` after mutating parent can cause UB
+        match cur.label().first() {
+            Some(first) => {
+                let child_index = parent.child_index_with_first(*first)?;
+                let child = &mut parent.children_mut()[child_index];
+                // if prefix ends mid label then we must split the node
+                if !suffix.is_empty() && suffix.len() < child.label_len() {
+                    unsafe {
+                        // split node so we can set label properly
+                        child.split_at(suffix.len(), None);
+                        // remove node we created
+                        let mut detached = child.remove_child(0);
+                        if parent.children_len() != 0 {
+                            // remove split node that may have been left over
+                            parent.remove_child(child_index);
+                        }
+                        // set label
+                        detached.prefix_label(key);
+                        Some(detached)
+                    }
+                } else if suffix == child.label() {
+                    // we are at a leaf
+                    unsafe {
+                        let detached = parent.remove_child(child_index);
+                        parent.try_merge_child();
+                        Some(detached)
+                    }
+                } else if suffix.is_empty() {
+                    // full match on node
+                    let mut detached = unsafe { parent.remove_child(child_index) };
+                    detached.set_label(key, false);
+                    parent.try_merge_child();
+                    Some(detached)
+                } else {
+                    // if suffix > child.label_len then we didn't descend far enough?
+                    None
+                }
+            }
+            None => None,
+        }
+    }
+
     pub(crate) fn get_mut<K: ?Sized + BorrowedBytes>(&mut self, key: &K) -> Option<&mut V> {
         self.get_node_mut(key).and_then(|n| n.value_mut())
     }
@@ -231,9 +294,7 @@ impl<V> Node<V> {
             }
 
             match cur.child_with_first(unsafe { *key.get_unchecked(0) }) {
-                None => {
-                    return last_match;
-                }
+                None => return last_match,
                 Some(child) => {
                     cur = child;
                 }
@@ -272,167 +333,6 @@ impl<V> Node<V> {
             }
         }
     }
-    // pub(crate) fn longest_common_prefix_len<K: ?Sized + BorrowedBytes>(
-    //     &self,
-    //     key: &K,
-    //     offset: usize,
-    // ) -> usize {
-    //     let (next, common_prefix_len) = key.strip_common_prefix_and_len(self.label());
-    //     let next_offset = offset + common_prefix_len;
-    //     if common_prefix_len == self.label().len() {
-    //         if next.is_empty() {
-    //             next_offset
-    //         } else {
-    //             self.child()
-    //                 .map(|child| child.longest_common_prefix_len(next, next_offset))
-    //                 .unwrap_or(next_offset)
-    //         }
-    //     } else if common_prefix_len == 0 && key.cmp_first_item(self.label()).is_ge() {
-    //         self.sibling()
-    //             .map(|sibling| sibling.longest_common_prefix_len(next, offset))
-    //             .unwrap_or(next_offset)
-    //     } else {
-    //         next_offset
-    //     }
-    // }
-    // pub(crate) fn get_longest_common_prefix<K: ?Sized + BorrowedBytes>(
-    //     &self,
-    //     key: &K,
-    //     offset: usize,
-    // ) -> Option<(usize, &V)> {
-    //     let (next, common_prefix_len) = key.strip_common_prefix_and_len(self.label());
-    //     if common_prefix_len == self.label().len() {
-    //         let offset = offset + common_prefix_len;
-    //         if next.is_empty() {
-    //             self.value().map(|v| (offset, v))
-    //         } else {
-    //             self.child()
-    //                 .and_then(|child| child.get_longest_common_prefix(next, offset))
-    //                 .or_else(|| self.value().map(|v| (offset, v)))
-    //         }
-    //     } else if common_prefix_len == 0 && key.cmp_first_item(self.label()).is_ge() {
-    //         self.sibling()
-    //             .and_then(|sibling| sibling.get_longest_common_prefix(next, offset))
-    //     } else {
-    //         None
-    //     }
-    // }
-    // pub(crate) fn get_longest_common_prefix_mut<K: ?Sized + BorrowedBytes>(
-    //     &mut self,
-    //     key: &K,
-    //     offset: usize,
-    // ) -> Option<(usize, &mut V)> {
-    //     let (next, common_prefix_len) = key.strip_common_prefix_and_len(self.label());
-    //     if common_prefix_len == self.label().len() {
-    //         let offset = offset + common_prefix_len;
-    //         if next.is_empty() {
-    //             self.value_mut().map(|v| (offset, v))
-    //         } else {
-    //             let this = self.as_mut();
-    //             this.child
-    //                 .and_then(|child| child.get_longest_common_prefix_mut(next, offset))
-    //                 .or_else(|| this.value.map(|v| (offset, v)))
-    //         }
-    //     } else if common_prefix_len == 0 && key.cmp_first_item(self.label()).is_ge() {
-    //         self.sibling_mut()
-    //             .and_then(|sibling| sibling.get_longest_common_prefix_mut(next, offset))
-    //     } else {
-    //         None
-    //     }
-    // }
-
-    // pub(crate) fn get_prefix_node<K: ?Sized + BorrowedBytes>(
-    //     &self,
-    //     key: &K,
-    // ) -> Option<(usize, &Self)> {
-    //     let (next, common_prefix_len) = key.strip_common_prefix_and_len(self.label());
-    //     if next.is_empty() {
-    //         Some((common_prefix_len, self))
-    //     } else if common_prefix_len == self.label().len() {
-    //         self.child().and_then(|child| child.get_prefix_node(next))
-    //     } else if common_prefix_len == 0 && key.cmp_first_item(self.label()).is_ge() {
-    //         self.sibling()
-    //             .and_then(|sibling| sibling.get_prefix_node(next))
-    //     } else {
-    //         None
-    //     }
-    // }
-
-    // pub(crate) fn get_prefix_node_mut<K: ?Sized + BorrowedBytes>(
-    //     &mut self,
-    //     key: &K,
-    // ) -> Option<(usize, &mut Self)> {
-    //     let (next, common_prefix_len) = key.strip_common_prefix_and_len(self.label());
-    //     if next.is_empty() {
-    //         Some((common_prefix_len, self))
-    //     } else if common_prefix_len == self.label().len() {
-    //         self.child_mut()
-    //             .and_then(|child| child.get_prefix_node_mut(next))
-    //     } else if common_prefix_len == 0 && key.cmp_first_item(self.label()).is_ge() {
-    //         self.sibling_mut()
-    //             .and_then(|sibling| sibling.get_prefix_node_mut(next))
-    //     } else {
-    //         None
-    //     }
-    // }
-
-    // pub(crate) fn split_by_prefix<K: ?Sized + BorrowedBytes>(
-    //     &mut self,
-    //     prefix: &K,
-    //     level: usize,
-    // ) -> Option<Self> {
-    //     let (next, common_prefix_len) = prefix.strip_common_prefix_and_len(self.label());
-    //     if common_prefix_len == prefix.as_bytes().len() {
-    //         let value = self.take_value();
-    //         let child = self.take_child();
-    //         // let node = Node::new(&self.label()[common_prefix_len..], value, child, None);
-    //         todo!();
-    //         if let Some(sibling) = self.take_sibling() {
-    //             *self = sibling;
-    //         }
-    //         Some(node)
-    //     } else if common_prefix_len == self.label().len() {
-    //         self.child_mut()
-    //             .and_then(|child| child.split_by_prefix(next, level + 1))
-    //             .inspect(|_old| {
-    //                 self.try_reclaim_child();
-    //                 self.try_merge_with_child(level);
-    //             })
-    //     } else if common_prefix_len == 0 && prefix.cmp_first_item(self.label()).is_ge() {
-    //         self.sibling_mut()
-    //             .and_then(|sibling| sibling.split_by_prefix(next, level))
-    //             .inspect(|_old| {
-    //                 self.try_reclaim_sibling();
-    //             })
-    //     } else {
-    //         None
-    //     }
-    // }
-    // pub(crate) fn remove<K: ?Sized + BorrowedBytes>(&mut self, key: &K, level: usize) -> Option<V> {
-    //     let (next, common_prefix_len) = key.strip_common_prefix_and_len(self.label());
-    //     if common_prefix_len == self.label().len() {
-    //         if next.is_empty() {
-    //             self.take_value().inspect(|_old| {
-    //                 self.try_merge_with_child(level);
-    //             })
-    //         } else {
-    //             self.child_mut()
-    //                 .and_then(|child| child.remove(next, level + 1))
-    //                 .inspect(|_old| {
-    //                     self.try_reclaim_child();
-    //                     self.try_merge_with_child(level);
-    //                 })
-    //         }
-    //     } else if common_prefix_len == 0 && key.cmp_first_item(self.label()).is_ge() {
-    //         self.sibling_mut()
-    //             .and_then(|sibling| sibling.remove(next, level))
-    //             .inspect(|_old| {
-    //                 self.try_reclaim_sibling();
-    //             })
-    //     } else {
-    //         None
-    //     }
-    // }
 
     pub fn remove<K: ?Sized + BorrowedBytes>(&mut self, key: &K) -> Option<V> {
         // Find the index of child
@@ -451,8 +351,7 @@ impl<V> Node<V> {
                     self.remove_child(i);
                 }
             } else {
-                // If there's a single grandchild,
-                // we merge the grandchild into the child.
+                // try to merge with child if there is a single
                 child.try_merge_child();
             }
 
@@ -1121,6 +1020,28 @@ mod tests {
         root.insert("box", 4);
         root
     }
+
+    /// &root = "" (-)
+    ///      ├─"a" (1)
+    ///            ├─"b" (-)
+    ///                  ├─"ort" (5)
+    ///                  └─"s" (6)
+    ///            └─"ppl" (-)
+    ///                  ├─"e" (2)
+    ///                        └─"sauce" (3)
+    ///                  └─"y" (4)
+    ///      └─"box" (7)
+    fn create_bigger_test_tree() -> Node<u32> {
+        let mut root = Node::root();
+        root.insert("a", 1);
+        root.insert("apple", 2);
+        root.insert("applesauce", 3);
+        root.insert("apply", 4);
+        root.insert("abort", 5);
+        root.insert("abs", 6);
+        root.insert("box", 7);
+        root
+    }
     #[test]
     fn test_get_node() {
         let root = create_test_tree();
@@ -1483,28 +1404,41 @@ mod tests {
         assert_eq!(node_a.children()[0].label(), b"b");
     }
 
-    // #[test]
-    // fn reclaim_works() {
-    //     let mut set = ["123", "123456", "123abc", "123def"]
-    //         .iter()
-    //         .collect::<PatriciaSet>();
-    //     assert_eq!(
-    //         set_to_labels(&set),
-    //         [(0, ""), (1, "123"), (2, "456"), (2, "abc"), (2, "def")]
-    //     );
+    #[test]
+    fn test_split_by_prefix() {
+        let mut root = create_bigger_test_tree();
+        // dbg!(&root);
+        let other = root.split_by_prefix("ap").unwrap();
+        assert_eq!(other.value(), None);
+        assert_eq!(other.label(), b"appl");
+        assert_eq!(other.children_len(), 2);
 
-    //     set.remove("123def");
-    //     assert_eq!(
-    //         set_to_labels(&set),
-    //         [(0, ""), (1, "123"), (2, "456"), (2, "abc")]
-    //     );
+        let other = root.split_by_prefix("ab").unwrap();
+        assert_eq!(other.value(), None);
+        assert_eq!(other.label(), b"ab");
+        assert_eq!(other.children_len(), 2);
 
-    //     set.remove("123456");
-    //     assert_eq!(set_to_labels(&set), [(0, ""), (1, "123"), (2, "abc")]);
+        let mut root = create_bigger_test_tree();
+        let other = root.split_by_prefix("b").unwrap();
+        assert_eq!(other.value(), Some(&7)); // box value
+        assert_eq!(other.label(), b"box");
+        assert_eq!(other.children_len(), 0);
 
-    //     set.remove("123");
-    //     assert_eq!(set_to_labels(&set), [(0, ""), (1, "123abc")]);
-    // }
+        // matches a leaf split over many prefix nodes
+        let mut root = create_bigger_test_tree();
+        let other = root.split_by_prefix("abort").unwrap();
+        assert_eq!(other.value(), Some(&5));
+        assert_eq!(other.label(), b"abort");
+        assert_eq!(other.children_len(), 0);
+
+        let mut root = create_bigger_test_tree();
+        let other = root.split_by_prefix("x");
+        assert_eq!(other, None);
+
+        let mut root = create_bigger_test_tree();
+        let other = root.split_by_prefix("xyx");
+        assert_eq!(other, None);
+    }
 
     // #[test]
     // fn get_longest_common_prefix_works() {

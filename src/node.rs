@@ -160,19 +160,33 @@ impl<V> Node<V> {
         }
     }
 
+    /// set label with prefix slice
+    /// NOTE: you can seriously mess up a node calling these functions manually
     pub fn prefix_label(&mut self, prefix: &[u8]) {
+        self.set_label(prefix, true);
+    }
+
+    /// reallocate node with new_label either prefixed the current one or replacing it
+    /// NOTE: you can seriously mess up a node calling these functions manually
+    pub fn set_label(&mut self, new_label: &[u8], prefix: bool) {
         let new_header = NodeHeader {
-            label_len: (prefix.len() + self.label_len()) as u8,
+            label_len: if prefix {
+                new_label.len() + self.label_len()
+            } else {
+                new_label.len()
+            } as u8,
             children_len: self.children_len() as u8,
         };
         let old_label_len = self.label_len();
         let value = self.take_value();
         let new_ptr_data = new_header.ptr_data();
         let old_ptr_data = self.ptr_data();
+
         debug_assert!(
             old_ptr_data.layout.size() <= new_ptr_data.layout.size(),
             "When prepending a prefix to the label, the allocation size should not decrease."
         );
+
         unsafe {
             let raw_ptr = alloc::alloc::realloc(
                 self.ptr.as_ptr().cast(),
@@ -203,12 +217,14 @@ impl<V> Node<V> {
             }
             // write merged label
             let new_label_ptr = new_ptr.label_ptr().as_ptr();
-            // shift the suffix
-            new_label_ptr
-                .add(prefix.len())
-                .copy_from(old_ptr.label_ptr().as_ptr(), old_label_len);
+            if prefix {
+                // shift the suffix
+                new_label_ptr
+                    .add(new_label.len())
+                    .copy_from(old_ptr.label_ptr().as_ptr(), old_label_len);
+            }
             // copy the prefix
-            new_label_ptr.copy_from_nonoverlapping(prefix.as_ptr(), prefix.len());
+            new_label_ptr.copy_from_nonoverlapping(new_label.as_ptr(), new_label.len());
 
             new_ptr.write_header(new_header);
             self.ptr = new_ptr.assume_init().into_ptr_forget();

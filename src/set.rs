@@ -1,11 +1,8 @@
 //! A set based on a patricia tree.
 use crate::Bytes;
 use crate::map::{self, GenericPatriciaMap};
-#[cfg(any(feature = "serde", test))]
-use crate::node::Node;
 use alloc::string::String;
 use alloc::vec::Vec;
-use core::fmt;
 use core::iter::FromIterator;
 
 /// Patricia tree based set with [`Vec<u8>`] as key.
@@ -87,20 +84,17 @@ impl<T> GenericPatriciaSet<T> {
         self.map.clear();
     }
 
-    #[cfg(feature = "serde")]
-    pub(crate) fn from_node(node: Node<()>) -> Self {
+    pub(crate) fn from_node(node: crate::Node<()>) -> Self {
         Self {
             map: GenericPatriciaMap::from_node(node),
         }
     }
 
-    #[cfg(any(test, feature = "serde"))]
-    pub(crate) fn as_node(&self) -> &Node<()> {
+    pub(crate) fn as_node(&self) -> &crate::Node<()> {
         self.map.as_node()
     }
 
-    #[cfg(test)]
-    pub(crate) fn into_node(self) -> Node<()> {
+    pub(crate) fn into_node(self) -> crate::Node<()> {
         self.map.into_node()
     }
 }
@@ -232,45 +226,46 @@ impl<T: Bytes> GenericPatriciaSet<T> {
         }
     }
 
-    //     // /// Gets an iterator over the contents of this set, in sorted order.
-    //     // ///
-    //     // /// # Examples
-    //     // ///
-    //     // /// ```
-    //     // /// use patricia_tree::PatriciaSet;
-    //     // ///
-    //     // /// let mut set = PatriciaSet::new();
-    //     // /// set.insert("foo");
-    //     // /// set.insert("bar");
-    //     // /// set.insert("baz");
-    //     // ///
-    //     // /// assert_eq!(set.iter().collect::<Vec<_>>(), [Vec::from("bar"), "baz".into(), "foo".into()]);
-    //     // /// ```
-    //     // pub fn iter(&self) -> Iter<'_, T> {
-    //     //     Iter(self.map.keys())
-    //     // }
-    // }
-    // impl<T: Bytes> GenericPatriciaSet<T> {
-    //     /// Gets an iterator over the contents having the given prefix of this set, in sorted order.
-    //     ///
-    //     /// # Examples
-    //     ///
-    //     /// ```
-    //     /// use patricia_tree::PatriciaSet;
-    //     ///
-    //     /// let mut set = PatriciaSet::new();
-    //     /// set.insert("foo");
-    //     /// set.insert("bar");
-    //     /// set.insert("baz");
-    //     ///
-    //     /// assert_eq!(set.iter_prefix(b"ba").collect::<Vec<_>>(), [Vec::from("bar"), "baz".into()]);
-    //     /// ```
-    //     pub fn iter_prefix<'a, 'b>(&'a self, prefix: &'b T::Borrowed) -> impl 'a + Iterator<Item = T>
-    //     where
-    //         'b: 'a,
-    //     {
-    //         self.map.iter_prefix(prefix).map(|(k, _)| k)
-    //     }
+    /// Gets an iterator over the contents of this set, in sorted order.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use patricia_tree::PatriciaSet;
+    ///
+    /// let mut set = PatriciaSet::new();
+    /// set.insert("foo");
+    /// set.insert("bar");
+    /// set.insert("baz");
+    ///
+    /// assert_eq!(set.iter().collect::<Vec<_>>(), [Vec::from("bar"), "baz".into(), "foo".into()]);
+    /// ```
+    pub fn iter(&self) -> Iter<'_, T> {
+        Iter(self.map.keys())
+    }
+}
+
+impl<T: Bytes> GenericPatriciaSet<T> {
+    /// Gets an iterator over the contents having the given prefix of this set, in sorted order.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use patricia_tree::PatriciaSet;
+    ///
+    /// let mut set = PatriciaSet::new();
+    /// set.insert("foo");
+    /// set.insert("bar");
+    /// set.insert("baz");
+    ///
+    /// assert_eq!(set.iter_prefix(b"ba").collect::<Vec<_>>(), [Vec::from("bar"), "baz".into()]);
+    /// ```
+    pub fn iter_prefix<'a, 'b>(&'a self, prefix: &'b T::Borrowed) -> impl 'a + Iterator<Item = T>
+    where
+        'b: 'a,
+    {
+        self.map.iter_prefix(prefix).map(|(k, _)| k)
+    }
 }
 // impl<T: Bytes + fmt::Debug> fmt::Debug for GenericPatriciaSet<T> {
 //     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
@@ -289,13 +284,15 @@ impl<T> Default for GenericPatriciaSet<T> {
         GenericPatriciaSet::new()
     }
 }
-// impl<T: Bytes> IntoIterator for GenericPatriciaSet<T> {
-//     type Item = T;
-//     type IntoIter = IntoIter<T>;
-//     fn into_iter(self) -> Self::IntoIter {
-//         IntoIter(self.map.into_iter())
-//     }
-// }
+
+impl<T: Bytes> IntoIterator for GenericPatriciaSet<T> {
+    type Item = T;
+    type IntoIter = IntoIter<T>;
+    fn into_iter(self) -> Self::IntoIter {
+        IntoIter(self.map.into_iter())
+    }
+}
+
 impl<T: Bytes, U: AsRef<T::Borrowed>> FromIterator<U> for GenericPatriciaSet<T> {
     fn from_iter<I>(iter: I) -> Self
     where
@@ -308,6 +305,7 @@ impl<T: Bytes, U: AsRef<T::Borrowed>> FromIterator<U> for GenericPatriciaSet<T> 
         set
     }
 }
+
 impl<T: Bytes, U: AsRef<T::Borrowed>> Extend<U> for GenericPatriciaSet<T> {
     fn extend<I>(&mut self, iter: I)
     where
@@ -362,127 +360,127 @@ mod tests {
         assert!(set.is_empty());
     }
 
-    // #[test]
-    // fn into_iter_works() {
-    //     let set: PatriciaSet = vec!["foo", "bar", "baz"].into_iter().collect();
-    //     assert_eq!(
-    //         set.into_iter().collect::<Vec<_>>(),
-    //         [Vec::from("bar"), "baz".into(), "foo".into()]
-    //     );
-    // }
+    #[test]
+    fn into_iter_works() {
+        let set: PatriciaSet = vec!["foo", "bar", "baz"].into_iter().collect();
+        assert_eq!(
+            set.into_iter().collect::<Vec<_>>(),
+            [Vec::from("bar"), "baz".into(), "foo".into()]
+        );
+    }
 
-    // #[test]
-    // fn split_by_prefix_works() {
-    //     let mut set: PatriciaSet = vec!["foo", "bar", "baz"].into_iter().collect();
-    //     let splitted_set = set.split_by_prefix("");
-    //     assert!(set.is_empty());
-    //     assert_eq!(
-    //         splitted_set.iter().collect::<Vec<_>>(),
-    //         [b"bar", b"baz", b"foo"]
-    //     );
+    #[test]
+    fn split_by_prefix_works() {
+        let mut set: PatriciaSet = vec!["foo", "bar", "baz"].into_iter().collect();
+        let splitted_set = set.split_by_prefix("");
+        assert!(set.is_empty());
+        assert_eq!(
+            splitted_set.iter().collect::<Vec<_>>(),
+            [b"bar", b"baz", b"foo"]
+        );
 
-    //     let mut set: PatriciaSet = vec!["foo", "bar", "baz"].into_iter().collect();
-    //     let splitted_set = set.split_by_prefix("f");
-    //     assert_eq!(set.iter().collect::<Vec<_>>(), [b"bar", b"baz"]);
-    //     assert_eq!(splitted_set.iter().collect::<Vec<_>>(), [b"foo"]);
+        let mut set: PatriciaSet = vec!["foo", "bar", "baz"].into_iter().collect();
+        let splitted_set = set.split_by_prefix("f");
+        assert_eq!(set.iter().collect::<Vec<_>>(), [b"bar", b"baz"]);
+        assert_eq!(splitted_set.iter().collect::<Vec<_>>(), [b"foo"]);
 
-    //     let mut set: PatriciaSet = vec!["foo", "bar", "baz"].into_iter().collect();
-    //     let splitted_set = set.split_by_prefix("fo");
-    //     assert_eq!(set.iter().collect::<Vec<_>>(), [b"bar", b"baz"]);
-    //     assert_eq!(splitted_set.iter().collect::<Vec<_>>(), [b"foo"]);
+        let mut set: PatriciaSet = vec!["foo", "bar", "baz"].into_iter().collect();
+        let splitted_set = set.split_by_prefix("fo");
+        assert_eq!(set.iter().collect::<Vec<_>>(), [b"bar", b"baz"]);
+        assert_eq!(splitted_set.iter().collect::<Vec<_>>(), [b"foo"]);
 
-    //     let mut set: PatriciaSet = vec!["foo", "bar", "baz"].into_iter().collect();
-    //     let splitted_set = set.split_by_prefix("foo");
-    //     assert_eq!(set.iter().collect::<Vec<_>>(), [b"bar", b"baz"]);
-    //     assert_eq!(splitted_set.iter().collect::<Vec<_>>(), [b"foo"]);
+        let mut set: PatriciaSet = vec!["foo", "bar", "baz"].into_iter().collect();
+        let splitted_set = set.split_by_prefix("foo");
+        assert_eq!(set.iter().collect::<Vec<_>>(), [b"bar", b"baz"]);
+        assert_eq!(splitted_set.iter().collect::<Vec<_>>(), [b"foo"]);
 
-    //     let mut set: PatriciaSet = vec!["foo", "bar", "baz"].into_iter().collect();
-    //     let splitted_set = set.split_by_prefix("b");
-    //     assert_eq!(set.iter().collect::<Vec<_>>(), [b"foo"]);
-    //     assert_eq!(splitted_set.iter().collect::<Vec<_>>(), [b"bar", b"baz"]);
+        let mut set: PatriciaSet = vec!["foo", "bar", "baz"].into_iter().collect();
+        let splitted_set = set.split_by_prefix("b");
+        assert_eq!(set.iter().collect::<Vec<_>>(), [b"foo"]);
+        assert_eq!(splitted_set.iter().collect::<Vec<_>>(), [b"bar", b"baz"]);
 
-    //     let mut set: PatriciaSet = vec!["foo", "bar", "baz"].into_iter().collect();
-    //     let splitted_set = set.split_by_prefix("ba");
-    //     assert_eq!(set.iter().collect::<Vec<_>>(), [b"foo"]);
-    //     assert_eq!(splitted_set.iter().collect::<Vec<_>>(), [b"bar", b"baz"]);
+        let mut set: PatriciaSet = vec!["foo", "bar", "baz"].into_iter().collect();
+        let splitted_set = set.split_by_prefix("ba");
+        assert_eq!(set.iter().collect::<Vec<_>>(), [b"foo"]);
+        assert_eq!(splitted_set.iter().collect::<Vec<_>>(), [b"bar", b"baz"]);
 
-    //     let mut set: PatriciaSet = vec!["foo", "bar", "baz"].into_iter().collect();
-    //     let splitted_set = set.split_by_prefix("bar");
-    //     assert_eq!(set.iter().collect::<Vec<_>>(), [b"baz", b"foo"]);
-    //     assert_eq!(splitted_set.iter().collect::<Vec<_>>(), [b"bar"]);
+        let mut set: PatriciaSet = vec!["foo", "bar", "baz"].into_iter().collect();
+        let splitted_set = set.split_by_prefix("bar");
+        assert_eq!(set.iter().collect::<Vec<_>>(), [b"baz", b"foo"]);
+        assert_eq!(splitted_set.iter().collect::<Vec<_>>(), [b"bar"]);
 
-    //     let mut set: PatriciaSet = vec!["foo", "bar", "baz"].into_iter().collect();
-    //     let mut splitted_set = set.split_by_prefix("baz");
-    //     assert_eq!(set.iter().collect::<Vec<_>>(), [b"bar", b"foo"]);
-    //     assert_eq!(splitted_set.iter().collect::<Vec<_>>(), [b"baz"]);
+        let mut set: PatriciaSet = vec!["foo", "bar", "baz"].into_iter().collect();
+        let mut splitted_set = set.split_by_prefix("baz");
+        assert_eq!(set.iter().collect::<Vec<_>>(), [b"bar", b"foo"]);
+        assert_eq!(splitted_set.iter().collect::<Vec<_>>(), [b"baz"]);
 
-    //     splitted_set.insert("aaa");
-    //     assert_eq!(splitted_set.iter().collect::<Vec<_>>(), [b"aaa", b"baz"]);
+        splitted_set.insert("aaa");
+        assert_eq!(splitted_set.iter().collect::<Vec<_>>(), [b"aaa", b"baz"]);
 
-    //     let mut set: PatriciaSet = vec!["foo", "bar", "baz"].into_iter().collect();
-    //     let splitted_set = set.split_by_prefix("bazz");
-    //     assert_eq!(set.iter().collect::<Vec<_>>(), [b"bar", b"baz", b"foo"]);
-    //     assert!(splitted_set.is_empty());
+        let mut set: PatriciaSet = vec!["foo", "bar", "baz"].into_iter().collect();
+        let splitted_set = set.split_by_prefix("bazz");
+        assert_eq!(set.iter().collect::<Vec<_>>(), [b"bar", b"baz", b"foo"]);
+        assert!(splitted_set.is_empty());
 
-    //     let mut set: PatriciaSet = vec!["foo", "bar", "baz"].into_iter().collect();
-    //     let splitted_set = set.split_by_prefix("for");
-    //     assert_eq!(set.iter().collect::<Vec<_>>(), [b"bar", b"baz", b"foo"]);
-    //     assert!(splitted_set.is_empty());
+        let mut set: PatriciaSet = vec!["foo", "bar", "baz"].into_iter().collect();
+        let splitted_set = set.split_by_prefix("for");
+        assert_eq!(set.iter().collect::<Vec<_>>(), [b"bar", b"baz", b"foo"]);
+        assert!(splitted_set.is_empty());
 
-    //     let mut set: PatriciaSet = vec!["foo", "bar", "baz"].into_iter().collect();
-    //     let splitted_set = set.split_by_prefix("qux");
-    //     assert_eq!(set.iter().collect::<Vec<_>>(), [b"bar", b"baz", b"foo"]);
-    //     assert!(splitted_set.is_empty());
-    // }
+        let mut set: PatriciaSet = vec!["foo", "bar", "baz"].into_iter().collect();
+        let splitted_set = set.split_by_prefix("qux");
+        assert_eq!(set.iter().collect::<Vec<_>>(), [b"bar", b"baz", b"foo"]);
+        assert!(splitted_set.is_empty());
+    }
 
-    // #[test]
-    // fn iter_prefix_works() {
-    //     fn assert_iter_prefix(set: &PatriciaSet, prefix: &str) {
-    //         let actual = set.iter_prefix(prefix.as_bytes()).collect::<Vec<_>>();
-    //         let expected = set
-    //             .iter()
-    //             .filter(|key| key.starts_with(prefix.as_bytes()))
-    //             .collect::<Vec<_>>();
-    //         assert_eq!(actual, expected);
-    //     }
+    #[test]
+    fn iter_prefix_works() {
+        fn assert_iter_prefix(set: &PatriciaSet, prefix: &str) {
+            let actual = set.iter_prefix(prefix.as_bytes()).collect::<Vec<_>>();
+            let expected = set
+                .iter()
+                .filter(|key| key.starts_with(prefix.as_bytes()))
+                .collect::<Vec<_>>();
+            assert_eq!(actual, expected);
+        }
 
-    //     let set: PatriciaSet = vec!["foo", "bar", "baz"].into_iter().collect();
-    //     let prefixes = [
-    //         "", "a", "b", "ba", "bar", "baz", "bax", "c", "f", "fo", "foo",
-    //     ];
-    //     for prefix in &prefixes {
-    //         assert_iter_prefix(&set, prefix);
-    //     }
+        let set: PatriciaSet = vec!["foo", "bar", "baz"].into_iter().collect();
+        let prefixes = [
+            "", "a", "b", "ba", "bar", "baz", "bax", "c", "f", "fo", "foo",
+        ];
+        for prefix in &prefixes {
+            assert_iter_prefix(&set, prefix);
+        }
 
-    //     let set: PatriciaSet = vec![
-    //         "JavaScript",
-    //         "Python",
-    //         "Java",
-    //         "C++",
-    //         "Swift",
-    //         "TypeScript",
-    //         "Go",
-    //         "SQL",
-    //         "Ruby",
-    //         "R",
-    //         "PHP",
-    //         "Perl",
-    //         "Kotlin",
-    //         "C#",
-    //         "Rust",
-    //         "Scheme",
-    //         "Erlang",
-    //         "Scala",
-    //         "Elixir",
-    //         "Haskell",
-    //     ]
-    //     .into_iter()
-    //     .collect();
-    //     let prefixes = [
-    //         "", "P", "Py", "J", "Jav", "Java", "JavaS", "Rusti", "E", "El", "H", "S", "Sc",
-    //     ];
-    //     for prefix in &prefixes {
-    //         assert_iter_prefix(&set, prefix);
-    //     }
-    // }
+        let set: PatriciaSet = vec![
+            "JavaScript",
+            "Python",
+            "Java",
+            "C++",
+            "Swift",
+            "TypeScript",
+            "Go",
+            "SQL",
+            "Ruby",
+            "R",
+            "PHP",
+            "Perl",
+            "Kotlin",
+            "C#",
+            "Rust",
+            "Scheme",
+            "Erlang",
+            "Scala",
+            "Elixir",
+            "Haskell",
+        ]
+        .into_iter()
+        .collect();
+        let prefixes = [
+            "", "P", "Py", "J", "Jav", "Java", "JavaS", "Rusti", "E", "El", "H", "S", "Sc",
+        ];
+        for prefix in &prefixes {
+            assert_iter_prefix(&set, prefix);
+        }
+    }
 }
