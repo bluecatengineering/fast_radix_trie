@@ -116,6 +116,7 @@ impl<V> NodePtrAndData<V> {
     pub(crate) unsafe fn children_ptr(&self) -> Option<NonNull<Node<V>>> {
         unsafe { self.ptr_data.children_ptr(self.ptr) }
     }
+    #[allow(unused)]
     #[inline]
     pub(crate) unsafe fn value_ptr(&self) -> Option<NonNull<V>> {
         unsafe { self.ptr_data.value_ptr(self.ptr, Flags::VALUE_INITIALIZED) }

@@ -1,6 +1,6 @@
 //! A node which represents a subtree of a patricia tree.
 use crate::{
-    node_alloc::node_header::{Flags, NodeHeader, NodePtrAndData, PtrData},
+    node_alloc::node_header::{Flags, NodeHeader, NodePtrAndData},
     node_common::{NodeMut, assert_some},
 };
 use core::{

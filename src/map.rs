@@ -1003,6 +1003,7 @@ mod tests {
 
     #[test]
     fn test_iter_prefix_case() {
+        // using longest_common_prefix can traverse the tree incorrectly
         let mut map = StringRadixMap::new();
         map.insert("foo", 1);
         map.insert("foobar", 2);
