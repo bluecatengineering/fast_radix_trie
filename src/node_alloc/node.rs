@@ -418,33 +418,6 @@ impl<V> Node<V> {
             old_ptr.ptr_data.dealloc_forget(old_ptr.ptr);
         }
     }
-
-    // pub(crate) fn try_merge_with_child(&mut self, level: usize) {
-    //     if level == 0 {
-    //         return;
-    //     }
-
-    //     if self.value().is_some() || !self.flags().contains(Flags::CHILD_INITIALIZED) {
-    //         return;
-    //     }
-
-    //     let flags = assert_some!(self.child()).flags();
-    //     if !flags.contains(Flags::SIBLING_INITIALIZED)
-    //         && (self.label_len() + assert_some!(self.child()).label_len()) <= MAX_LABEL_LEN
-    //     {
-    //         let mut child = assert_some!(self.take_child());
-    //         let sibling = self.take_sibling();
-    //         let value = child.take_value();
-    //         let grandchild = child.take_child();
-
-    //         let mut label = Vec::with_capacity(self.label_len() + child.label_len());
-    //         label.extend(self.label());
-    //         label.extend(child.label());
-    //         // let node = Self::new(&label, value, grandchild, sibling);
-    //         // *self = node;
-    //         todo!();
-    //     }
-    // }
 }
 
 impl<V> Drop for Node<V> {

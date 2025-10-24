@@ -1,5 +1,5 @@
 //! node common methods
-use crate::{BorrowedBytes, Bytes, Node, NodeHeader, PtrData};
+use crate::{BorrowedBytes, Bytes, Node, NodeHeader, NodePtrAndData, PtrData};
 use alloc::{collections::VecDeque, string::String, vec::Vec};
 use core::{cmp::Ordering, fmt, marker::PhantomData, mem};
 
@@ -92,10 +92,19 @@ impl<V> Node<V> {
             // reallocate parent now that children are gone
             let value = self.take_value();
             let node = Node::new(self.label(), [], value);
-            *self = node;
+            // swap out children
+            let old_ptr = NodePtrAndData {
+                ptr: self.ptr,
+                ptr_data: self.ptr_data(),
+            };
+            // re-assign new node
+            self.ptr = node.into_ptr_forget();
+            // dealloc old block but forget value/children, they've moved
+            old_ptr.ptr_data.dealloc_forget(old_ptr.ptr);
         }
         Some(ret)
     }
+
     /// return number of children
     pub fn children_len(&self) -> usize {
         self.header().children_len as usize
@@ -334,6 +343,8 @@ impl<V> Node<V> {
         }
     }
 
+    /// remove the value at `key` and return it, merging the tree with its children
+    /// if necessary.
     pub fn remove<K: ?Sized + BorrowedBytes>(&mut self, key: &K) -> Option<V> {
         // Find the index of child
         let key = key.as_bytes();
@@ -504,6 +515,7 @@ impl<V: fmt::Debug> fmt::Debug for Node<V> {
             };
 
             writeln!(f, "{prefix}\"{label}\" {value}")?;
+
             for (i, child) in next.children().iter().rev().enumerate() {
                 let new_line_indentation = 4;
                 let white_indentation = white_indentation + line_indentation + 2;
@@ -763,7 +775,7 @@ impl<'a, V: 'a> NodeMut<'a, V> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    // use crate::{PatriciaSet, StringPatriciaMap};
+    use crate::{PatriciaSet, StringPatriciaMap};
 
     #[test]
     fn root_works() {
@@ -1279,6 +1291,29 @@ mod tests {
     }
 
     #[test]
+    fn node_into_iter_works() {
+        let mut set = Node::root();
+        set.insert("foo", ());
+        set.insert("bar", ());
+        set.insert("baz", ());
+
+        let nodes = set
+            .into_iter()
+            .map(|(level, node)| (level, node.label().to_vec()))
+            .collect::<Vec<_>>();
+        assert_eq!(
+            nodes,
+            [
+                (0, b"".to_vec()),
+                (1, b"ba".to_vec()),
+                (2, b"r".to_vec()),
+                (2, b"z".to_vec()),
+                (1, b"foo".to_vec()),
+            ]
+        );
+    }
+
+    #[test]
     fn test_prefix_label() {
         let child = Node::new(b"ld", [], Some(2));
         let mut node = Node::new(b"wor", [child], Some(1));
@@ -1440,66 +1475,66 @@ mod tests {
         assert_eq!(other, None);
     }
 
-    // #[test]
-    // fn get_longest_common_prefix_works() {
-    //     let set = ["123", "123456", "1234_67", "123abc", "123def"]
-    //         .iter()
-    //         .collect::<PatriciaSet>();
+    #[test]
+    fn test_take_children() {
+        let mut root = create_bigger_test_tree();
+        let children = root.take_children().unwrap();
+        assert_eq!(children.len(), 2);
+    }
 
-    //     let lcp = |key| set.get_longest_common_prefix(key);
-    //     assert_eq!(lcp(""), None);
-    //     assert_eq!(lcp("12"), None);
-    //     assert_eq!(lcp("123"), Some("123".as_bytes()));
-    //     assert_eq!(lcp("1234"), Some("123".as_bytes()));
-    //     assert_eq!(lcp("123456"), Some("123456".as_bytes()));
-    //     assert_eq!(lcp("1234_6"), Some("123".as_bytes()));
-    //     assert_eq!(lcp("123456789"), Some("123456".as_bytes()));
-    // }
+    #[test]
+    fn get_longest_common_prefix_works() {
+        let set = ["123", "123456", "1234_67", "123abc", "123def"]
+            .iter()
+            .collect::<PatriciaSet>();
 
-    // #[test]
-    // fn get_longest_common_prefix_mut_works() {
-    //     let mut map = [
-    //         ("123", 1),
-    //         ("123456", 2),
-    //         ("1234_67", 3),
-    //         ("123abc", 4),
-    //         ("123def", 5),
-    //     ]
-    //     .iter()
-    //     .cloned()
-    //     .map(|(k, v)| (String::from(k), v))
-    //     .collect::<StringPatriciaMap<usize>>();
+        let lcp = |key| set.get_longest_common_prefix(key);
+        assert_eq!(lcp(""), None);
+        assert_eq!(lcp("12"), None);
+        assert_eq!(lcp("123"), Some("123".as_bytes()));
+        assert_eq!(lcp("1234"), Some("123".as_bytes()));
+        assert_eq!(lcp("123456"), Some("123456".as_bytes()));
+        assert_eq!(lcp("1234_6"), Some("123".as_bytes()));
+        assert_eq!(lcp("123456789"), Some("123456".as_bytes()));
+    }
 
-    //     assert_eq!(map.get_longest_common_prefix_mut(""), None);
-    //     assert_eq!(map.get_longest_common_prefix_mut("12"), None);
-    //     assert_eq!(
-    //         map.get_longest_common_prefix_mut("123"),
-    //         Some(("123", &mut 1))
-    //     );
-    //     *map.get_longest_common_prefix_mut("123").unwrap().1 = 10;
-    //     assert_eq!(
-    //         map.get_longest_common_prefix_mut("1234"),
-    //         Some(("123", &mut 10))
-    //     );
-    //     assert_eq!(
-    //         map.get_longest_common_prefix_mut("123456"),
-    //         Some(("123456", &mut 2))
-    //     );
-    //     *map.get_longest_common_prefix_mut("1234567").unwrap().1 = 20;
-    //     assert_eq!(
-    //         map.get_longest_common_prefix_mut("1234_6"),
-    //         Some(("123", &mut 10))
-    //     );
-    //     assert_eq!(
-    //         map.get_longest_common_prefix_mut("123456789"),
-    //         Some(("123456", &mut 20))
-    //     );
-    // }
+    #[test]
+    fn get_longest_common_prefix_mut_works() {
+        let mut map = [
+            ("123", 1),
+            ("123456", 2),
+            ("1234_67", 3),
+            ("123abc", 4),
+            ("123def", 5),
+        ]
+        .iter()
+        .cloned()
+        .map(|(k, v)| (String::from(k), v))
+        .collect::<StringPatriciaMap<usize>>();
 
-    // fn set_to_labels(set: &PatriciaSet) -> Vec<(usize, &str)> {
-    //     set.as_node()
-    //         .iter()
-    //         .map(|(level, n)| (level, str::from_utf8(n.label()).unwrap()))
-    //         .collect()
-    // }
+        assert_eq!(map.get_longest_common_prefix_mut(""), None);
+        assert_eq!(map.get_longest_common_prefix_mut("12"), None);
+        assert_eq!(
+            map.get_longest_common_prefix_mut("123"),
+            Some(("123", &mut 1))
+        );
+        *map.get_longest_common_prefix_mut("123").unwrap().1 = 10;
+        assert_eq!(
+            map.get_longest_common_prefix_mut("1234"),
+            Some(("123", &mut 10))
+        );
+        assert_eq!(
+            map.get_longest_common_prefix_mut("123456"),
+            Some(("123456", &mut 2))
+        );
+        *map.get_longest_common_prefix_mut("1234567").unwrap().1 = 20;
+        assert_eq!(
+            map.get_longest_common_prefix_mut("1234_6"),
+            Some(("123", &mut 10))
+        );
+        assert_eq!(
+            map.get_longest_common_prefix_mut("123456789"),
+            Some(("123456", &mut 20))
+        );
+    }
 }

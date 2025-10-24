@@ -386,9 +386,9 @@ impl<K: Bytes, V> GenericPatriciaMap<K, V> {
     /// assert_eq!(b.keys().collect::<Vec<_>>(), [b"elixir", b"erlang"]);
     /// ```
     pub fn split_by_prefix<Q: AsRef<K::Borrowed>>(&mut self, prefix: Q) -> Self {
-        // let subtree = self.tree.get_node_mut(prefix.as_ref());
+        let subtree = self.tree.split_by_prefix(prefix.as_ref());
         GenericPatriciaMap {
-            tree: todo!(),
+            tree: subtree,
             _key: PhantomData,
         }
     }
@@ -774,17 +774,6 @@ mod tests {
         }
     }
 
-    // #[test]
-    // fn debug_works() {
-    //     let map: PatriciaMap<_> = vec![("foo", 1), ("bar", 2), ("baz", 3)]
-    //         .into_iter()
-    //         .collect();
-    //     assert_eq!(
-    //         format!("{map:?}"),
-    //         "{[98, 97, 114]: 2, [98, 97, 122]: 3, [102, 111, 111]: 1}"
-    //     );
-    // }
-
     #[test]
     fn clear_works() {
         let mut map = PatriciaMap::new();
@@ -955,26 +944,6 @@ mod tests {
         assert!(vec![0_u16, 1, 2].into_iter().eq(results.into_iter()));
     }
 
-    // #[test]
-    // fn string_patricia_map_works() {
-    //     // Insert as bytes.
-    //     let mut t = PatriciaMap::new();
-    //     t.insert("🌏🗻", ()); // [240,159,140,143,240,159,151,187]
-    //     t.insert("🌏🍔", ()); // [240,159,140,143,240,159,141,148]
-
-    //     let first_label = t.as_node().child().unwrap().label();
-    //     assert!(core::str::from_utf8(first_label).is_err());
-    //     assert_eq!(first_label, [240, 159, 140, 143, 240, 159]);
-
-    //     // Insert as string.
-    //     let mut t = StringPatriciaMap::new();
-    //     t.insert("🌏🗻", ());
-    //     t.insert("🌏🍔", ());
-
-    //     let first_label = t.as_node().child().unwrap().label();
-    //     assert_eq!(core::str::from_utf8(first_label).ok(), Some("🌏"));
-    // }
-
     #[test]
     fn issue21() {
         let mut map = PatriciaMap::new();
@@ -982,8 +951,8 @@ mod tests {
         map.insert("2", 0);
         map.remove("2");
         map.insert("2", 0);
-        // assert_eq!(map.len(), map.iter().count());
-        // assert_eq!(map.len(), map.iter_mut().count());
+        assert_eq!(map.len(), map.iter().count());
+        assert_eq!(map.len(), map.iter_mut().count());
     }
 
     #[test]
@@ -1003,12 +972,12 @@ mod tests {
         let mut map = StringPatriciaMap::new();
         map.insert("a0/b0", 0);
         map.insert("a1/b1", 0);
-        // let items: Vec<_> = {
-        // let prefix = "a0".to_owned();
-        // map.iter_prefix(&prefix).collect()
-        // };
+        let items: Vec<_> = {
+            let prefix = "a0".to_owned();
+            map.iter_prefix(&prefix).collect()
+        };
 
-        // assert_eq!(items, vec![("a0/b0".to_owned(), &0)])
+        assert_eq!(items, vec![("a0/b0".to_owned(), &0)])
     }
 
     #[test]
@@ -1029,6 +998,7 @@ mod tests {
         let mut map = StringPatriciaMap::new();
         map.insert("a0/b0", 0);
         map.insert("a1/b1", 0);
+        // dbg!(&map.into_node());
         let items: Vec<_> = {
             let prefix = "a0/b0/c0".to_owned();
             map.common_prefix_values(&prefix).collect()

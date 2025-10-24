@@ -23,7 +23,8 @@
 //! assert_eq!(map.get("baz"), Some(&3));
 //! ```
 #![warn(missing_docs)]
-#![cfg_attr(not(feature = "std"), no_std)]
+#![cfg_attr(not(any(feature = "std", test)), no_std)]
+// #![cfg_attr(not(test), no_std)]
 
 #[macro_use]
 extern crate alloc;
@@ -31,14 +32,14 @@ extern crate alloc;
 use alloc::{borrow::ToOwned, string::String, vec::Vec};
 use core::cmp::Ordering;
 
-// pub use map::{GenericPatriciaMap, PatriciaMap, StringPatriciaMap};
-// pub use set::{GenericPatriciaSet, PatriciaSet, StringPatriciaSet};
+pub use map::{GenericPatriciaMap, PatriciaMap, StringPatriciaMap};
+pub use set::{GenericPatriciaSet, PatriciaSet, StringPatriciaSet};
 
-// pub mod map;
-// pub mod set;
+pub mod map;
+pub mod set;
 
 mod node_common;
-// mod tree;
+mod tree;
 
 #[cfg(feature = "realloc")]
 pub mod node;

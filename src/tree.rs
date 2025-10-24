@@ -39,10 +39,16 @@ impl<V> PatriciaTree<V> {
     pub fn get_mut<K: ?Sized + BorrowedBytes>(&mut self, key: &K) -> Option<&mut V> {
         self.root.get_mut(key)
     }
-    pub fn split_by_prefix<K: ?Sized + BorrowedBytes>(&mut self, key: &K) -> Option<&mut Self> {
-        let mut node = self.root.split_by_prefix(key)?;
-        // Some(Self { root: node, len: 0 })
-        todo!();
+    pub fn split_by_prefix<K: ?Sized + BorrowedBytes>(&mut self, key: &K) -> Self {
+        match self.root.split_by_prefix(key) {
+            Some(node) => {
+                let new_root = Node::new(b"", [node], None);
+                let split = Self::from(new_root);
+                self.len -= split.len();
+                split
+            }
+            None => Self::new(),
+        }
     }
     pub fn longest_common_prefix_len<K: ?Sized + BorrowedBytes>(&self, key: &K) -> usize {
         self.root
@@ -121,17 +127,6 @@ impl<V> PatriciaTree<V> {
             None
         }
     }
-    // pub fn split_by_prefix<K: ?Sized + BorrowedBytes>(&mut self, prefix: &K) -> Self {
-    //     if let Some(splitted_root) = self.root.split_by_prefix(prefix, 0) {
-    //         let mut splitted_root = Node::new(prefix.as_bytes(), None, Some(splitted_root), None);
-    //         splitted_root.try_merge_with_child(1);
-    //         let splitted = Self::from(Node::new(b"", None, Some(splitted_root), None));
-    //         self.len -= splitted.len();
-    //         splitted
-    //     } else {
-    //         Self::new()
-    //     }
-    // }
     pub fn clear(&mut self) {
         self.root = Node::root();
         self.len = 0;
@@ -235,6 +230,9 @@ impl<V> Iterator for IntoNodes<V> {
 mod tests {
     use super::*;
 
+    // this test is copied from the old library, there is an important
+    // difference in how the new code handles the root node.
+    // it's not recommended to insert/remove values at ""
     #[test]
     fn it_works() {
         let mut tree = PatriciaTree::new();
@@ -266,14 +264,14 @@ mod tests {
         assert_eq!(tree2.get("bar".as_bytes()), Some(&7));
         assert_eq!(tree2.get("baz".as_bytes()), Some(&8));
 
-        assert_eq!(tree.remove("".as_bytes()), Some(2));
+        // old library difference. You can't remove root node anymore!
+        // assert_eq!(tree.remove("".as_bytes()), Some(2));
         assert_eq!(tree.remove("foo".as_bytes()), Some(4));
         assert_eq!(tree.remove("foobar".as_bytes()), Some(5));
         assert_eq!(tree.remove("bar".as_bytes()), Some(7));
         assert_eq!(tree.remove("baz".as_bytes()), Some(8));
         assert_eq!(tree.remove("qux".as_bytes()), None);
 
-        assert_eq!(tree.get("".as_bytes()), None);
         assert_eq!(tree.get("foo".as_bytes()), None);
         assert_eq!(tree.get("foobar".as_bytes()), None);
         assert_eq!(tree.get("bar".as_bytes()), None);
