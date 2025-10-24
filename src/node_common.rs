@@ -204,15 +204,44 @@ impl<V> Node<V> {
         &self,
         key: &K,
     ) -> Option<(usize, &Self)> {
+        // let mut cur = self;
+        // let mut key = key.as_bytes();
+        // loop {
+        //     // strip label prefix off key
+        //     let (offset, _) = crate::longest_common_prefix(key, cur.label());
+        //     key = &key[offset..];
+
+        //     // if offset != cur.label_len() {
+        //     //     return None;
+        //     // }
+
+        //     match key.first() {
+        //         // end of the line-- got an exact match
+        //         None => return Some((offset, cur)),
+        //         Some(first) => {
+        //             // find child or return None
+        //             cur = cur.child_with_first(*first)?;
+        //         }
+        //     }
+        // }
         let mut cur = self;
         let mut key = key.as_bytes();
         loop {
             // strip label prefix off key
-            let (offset, _) = crate::longest_common_prefix(key, cur.label());
-            key = &key[offset..];
+            let Some(next) = crate::strip_prefix(key, cur.label()) else {
+                // if label is longer than key, we are at final node,
+                // see if there is a partial match at the current node
+                if crate::strip_prefix(cur.label(), key).is_some() {
+                    return Some((key.len(), cur));
+                } else {
+                    // key doesn't partially match label, so return None
+                    return None;
+                }
+            };
+            key = next;
             match key.first() {
                 // end of the line-- got an exact match
-                None => return Some((offset, cur)),
+                None => return Some((cur.label_len(), cur)),
                 Some(first) => {
                     // find child or return None
                     cur = cur.child_with_first(*first)?;
@@ -228,15 +257,43 @@ impl<V> Node<V> {
         &mut self,
         key: &K,
     ) -> Option<(usize, &mut Self)> {
+        // let mut cur = self;
+        // let mut key = key.as_bytes();
+        // loop {
+        //     // get common offset point where labels differ
+        //     let (offset, _) = crate::longest_common_prefix(key, cur.label());
+        //     key = &key[offset..];
+        //     // if offset != cur.label_len() {
+        //     //     return None;
+        //     // }
+
+        //     match key.first() {
+        //         // end of the line-- got an exact match
+        //         None => return Some((offset, cur)),
+        //         Some(first) => {
+        //             // find child or return None
+        //             cur = cur.child_with_first_mut(*first)?;
+        //         }
+        //     }
+        // }
         let mut cur = self;
         let mut key = key.as_bytes();
         loop {
-            // get common offset point where labels differ
-            let (offset, _) = crate::longest_common_prefix(key, cur.label());
-            key = &key[offset..];
+            // strip label prefix off key
+            let Some(next) = crate::strip_prefix(key, cur.label()) else {
+                // if label is longer than key, we are at final node,
+                // see if there is a partial match at the current node
+                if crate::strip_prefix(cur.label(), key).is_some() {
+                    return Some((key.len(), cur));
+                } else {
+                    // key doesn't partially match label, so return None
+                    return None;
+                }
+            };
+            key = next;
             match key.first() {
                 // end of the line-- got an exact match
-                None => return Some((offset, cur)),
+                None => return Some((cur.label_len(), cur)),
                 Some(first) => {
                     // find child or return None
                     cur = cur.child_with_first_mut(*first)?;
@@ -332,11 +389,10 @@ impl<V> Node<V> {
 
         loop {
             let (offset, _next) = crate::longest_common_prefix(key, cur.label());
-            dbg!(offset);
             key = &key[offset..];
             matched_len += offset;
 
-            if key.is_empty() {
+            if key.is_empty() || offset != cur.label_len() {
                 return matched_len;
             }
 

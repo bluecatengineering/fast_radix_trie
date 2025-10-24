@@ -1002,6 +1002,19 @@ mod tests {
     }
 
     #[test]
+    fn test_iter_prefix_case() {
+        let mut map = StringRadixMap::new();
+        map.insert("foo", 1);
+        map.insert("foobar", 2);
+        let items: Vec<_> = {
+            let prefix = "foba".to_owned();
+            map.iter_prefix_mut(&prefix).collect()
+        };
+
+        assert_eq!(items, vec![])
+    }
+
+    #[test]
     fn issue42_common_prefix_values() {
         let mut map = StringRadixMap::new();
         map.insert("a0/b0", 0);
