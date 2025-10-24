@@ -198,7 +198,7 @@ impl<V> Node<V> {
     }
 
     /// will get node based on prefix, so partial matches are allowed. i.e. if a node was inserted for "apples"
-    /// get_prefix_node("ap") will retrieve the node
+    /// get_prefix_node("ap") will retrieve the node "apples" and return the length of the partial match
     #[inline]
     pub(crate) fn get_prefix_node<K: ?Sized + BorrowedBytes>(
         &self,
@@ -206,24 +206,22 @@ impl<V> Node<V> {
     ) -> Option<(usize, &Self)> {
         let mut cur = self;
         let mut key = key.as_bytes();
-        let mut len = 0;
         loop {
             // strip label prefix off key
             let Some(next) = crate::strip_prefix(key, cur.label()) else {
                 // if label is longer than key, we are at final node,
                 // see if there is a partial match at the current node
                 if crate::strip_prefix(cur.label(), key).is_some() {
-                    return Some((len + key.len(), cur));
+                    return Some((key.len(), cur));
                 } else {
                     // key doesn't partially match label, so return None
                     return None;
                 }
             };
             key = next;
-            len += cur.label_len();
             match key.first() {
                 // end of the line-- got an exact match
-                None => return Some((len, cur)),
+                None => return Some((cur.label_len(), cur)),
                 Some(first) => {
                     // find child or return None
                     cur = cur.child_with_first(*first)?;
@@ -241,24 +239,22 @@ impl<V> Node<V> {
     ) -> Option<(usize, &mut Self)> {
         let mut cur = self;
         let mut key = key.as_bytes();
-        let mut len = 0;
         loop {
             // strip label prefix off key
             let Some(next) = crate::strip_prefix(key, cur.label()) else {
                 // if label is longer than key, we are at final node,
                 // see if there is a partial match at the current node
                 if crate::strip_prefix(cur.label(), key).is_some() {
-                    return Some((len + key.len(), cur));
+                    return Some((key.len(), cur));
                 } else {
                     // key doesn't partially match label, so return None
                     return None;
                 }
             };
             key = next;
-            len += cur.label_len();
             match key.first() {
                 // end of the line-- got an exact match
-                None => return Some((len, cur)),
+                None => return Some((cur.label_len(), cur)),
                 Some(first) => {
                     // find child or return None
                     cur = cur.child_with_first_mut(*first)?;
@@ -1600,12 +1596,12 @@ mod tests {
         assert_eq!(root.get_prefix_node("b"), None);
         assert_eq!(root.get_prefix_node("b0"), None);
         assert_eq!(root.get_prefix_node("a0").unwrap().1.value().unwrap(), &1);
-        assert_eq!(root.get_prefix_node("a0").unwrap().0, 2);
+        assert_eq!(root.get_prefix_node("a0").unwrap().0, 1);
         assert_eq!(dbg!(root.get_prefix_node("a0/b1")), None);
         assert_eq!(root.get_prefix_node("a1/").unwrap().1.value().unwrap(), &2);
-        assert_eq!(root.get_prefix_node("a1/").unwrap().0, 3);
+        assert_eq!(root.get_prefix_node("a1/").unwrap().0, 2);
         assert_eq!(root.get_prefix_node("a1/b").unwrap().1.value().unwrap(), &2);
-        assert_eq!(root.get_prefix_node("a1/b").unwrap().0, 4);
+        assert_eq!(root.get_prefix_node("a1/b").unwrap().0, 3);
         assert_eq!(root.get_prefix_node("a1/b2"), None);
     }
     #[test]
