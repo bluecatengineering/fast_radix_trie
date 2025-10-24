@@ -274,14 +274,14 @@ mod tests {
         assert_eq!(tree2.get("bar".as_bytes()), Some(&7));
         assert_eq!(tree2.get("baz".as_bytes()), Some(&8));
 
-        // old library difference. You can't remove root node anymore!
-        // assert_eq!(tree.remove("".as_bytes()), Some(2));
+        assert_eq!(tree.remove("".as_bytes()), Some(2));
         assert_eq!(tree.remove("foo".as_bytes()), Some(4));
         assert_eq!(tree.remove("foobar".as_bytes()), Some(5));
         assert_eq!(tree.remove("bar".as_bytes()), Some(7));
         assert_eq!(tree.remove("baz".as_bytes()), Some(8));
         assert_eq!(tree.remove("qux".as_bytes()), None);
 
+        assert_eq!(tree.get("".as_bytes()), None);
         assert_eq!(tree.get("foo".as_bytes()), None);
         assert_eq!(tree.get("foobar".as_bytes()), None);
         assert_eq!(tree.get("bar".as_bytes()), None);

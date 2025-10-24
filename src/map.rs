@@ -47,7 +47,7 @@ impl<K, V> GenericRadixMap<K, V> {
     /// # Examples
     ///
     /// ```
-    /// use patricia_tree::PatriciaMap;
+    /// use fast_radix_tree::PatriciaMap;
     ///
     /// let mut map = PatriciaMap::new();
     /// map.insert("foo", 1);
@@ -63,7 +63,7 @@ impl<K, V> GenericRadixMap<K, V> {
     /// # Examples
     ///
     /// ```
-    /// use patricia_tree::PatriciaMap;
+    /// use fast_radix_tree::PatriciaMap;
     ///
     /// let mut map = PatriciaMap::new();
     /// map.insert("foo", 1);
@@ -79,7 +79,7 @@ impl<K, V> GenericRadixMap<K, V> {
     /// # Examples
     ///
     /// ```
-    /// use patricia_tree::PatriciaMap;
+    /// use fast_radix_tree::PatriciaMap;
     ///
     /// let mut map = PatriciaMap::new();
     /// assert!(map.is_empty());
@@ -118,7 +118,7 @@ impl<K: Bytes, V> GenericRadixMap<K, V> {
     /// # Examples
     ///
     /// ```
-    /// use patricia_tree::PatriciaMap;
+    /// use fast_radix_tree::PatriciaMap;
     ///
     /// let mut map = PatriciaMap::new();
     /// map.insert("foo", 1);
@@ -134,7 +134,7 @@ impl<K: Bytes, V> GenericRadixMap<K, V> {
     /// # Examples
     ///
     /// ```
-    /// use patricia_tree::PatriciaMap;
+    /// use fast_radix_tree::PatriciaMap;
     ///
     /// let mut map = PatriciaMap::new();
     /// map.insert("foo", 1);
@@ -150,7 +150,7 @@ impl<K: Bytes, V> GenericRadixMap<K, V> {
     /// # Examples
     ///
     /// ```
-    /// use patricia_tree::PatriciaMap;
+    /// use fast_radix_tree::PatriciaMap;
     ///
     /// let mut map = PatriciaMap::new();
     /// map.insert("foo", 1);
@@ -167,7 +167,7 @@ impl<K: Bytes, V> GenericRadixMap<K, V> {
     /// # Examples
     ///
     /// ```
-    /// use patricia_tree::PatriciaMap;
+    /// use fast_radix_tree::PatriciaMap;
     ///
     /// let mut map = PatriciaMap::new();
     /// map.insert("foo", 1);
@@ -192,7 +192,7 @@ impl<K: Bytes, V> GenericRadixMap<K, V> {
     /// # Examples
     ///
     /// ```
-    /// use patricia_tree::PatriciaMap;
+    /// use fast_radix_tree::PatriciaMap;
     ///
     /// let mut map = PatriciaMap::new();
     /// map.insert("foo", 1);
@@ -223,7 +223,7 @@ impl<K: Bytes, V> GenericRadixMap<K, V> {
     /// # Examples
     ///
     /// ```
-    /// use patricia_tree::PatriciaMap;
+    /// use fast_radix_tree::PatriciaMap;
     ///
     /// let mut map = PatriciaMap::new();
     /// map.insert("foo", 1);
@@ -250,7 +250,7 @@ impl<K: Bytes, V> GenericRadixMap<K, V> {
     /// # Examples
     ///
     /// ```
-    /// use patricia_tree::PatriciaMap;
+    /// use fast_radix_tree::PatriciaMap;
     ///
     /// let mut map = PatriciaMap::new();
     /// assert_eq!(map.insert("foo", 1), None);
@@ -267,7 +267,7 @@ impl<K: Bytes, V> GenericRadixMap<K, V> {
     /// # Examples
     ///
     /// ```
-    /// use patricia_tree::PatriciaMap;
+    /// use fast_radix_tree::PatriciaMap;
     ///
     /// let mut map = PatriciaMap::new();
     /// map.insert("foo", 1);
@@ -283,7 +283,7 @@ impl<K: Bytes, V> GenericRadixMap<K, V> {
     /// # Example
     ///
     /// ```
-    /// use patricia_tree::PatriciaMap;
+    /// use fast_radix_tree::PatriciaMap;
     ///
     /// let mut t = PatriciaMap::new();
     /// t.insert("a", vec!["a"]);
@@ -316,7 +316,7 @@ impl<K: Bytes, V> GenericRadixMap<K, V> {
     /// # Example
     ///
     /// ```
-    /// use patricia_tree::PatriciaMap;
+    /// use fast_radix_tree::PatriciaMap;
     /// let mut t = PatriciaMap::new();
     /// t.insert("a", vec!["a"]);
     /// t.insert("x", vec!["x"]);
@@ -345,7 +345,7 @@ impl<K: Bytes, V> GenericRadixMap<K, V> {
     /// # Example
     ///
     /// ```
-    /// use patricia_tree::PatriciaMap;
+    /// use fast_radix_tree::PatriciaMap;
     /// let mut t = PatriciaMap::new();
     /// t.insert("a", vec!["a"]);
     /// t.insert("x", vec!["x"]);
@@ -373,7 +373,7 @@ impl<K: Bytes, V> GenericRadixMap<K, V> {
     /// # Examples
     ///
     /// ```
-    /// use patricia_tree::PatriciaMap;
+    /// use fast_radix_tree::PatriciaMap;
     ///
     /// let mut a = PatriciaMap::new();
     /// a.insert("rust", 1);
@@ -402,7 +402,7 @@ impl<K: Bytes, V> GenericRadixMap<K, V> {
     /// # Examples
     ///
     /// ```
-    /// use patricia_tree::PatriciaMap;
+    /// use fast_radix_tree::PatriciaMap;
     ///
     /// let map: PatriciaMap<_> =
     ///     vec![("foo", 1), ("bar", 2), ("baz", 3)].into_iter().collect();
@@ -418,7 +418,7 @@ impl<K: Bytes, V> GenericRadixMap<K, V> {
     /// # Examples
     ///
     /// ```
-    /// use patricia_tree::PatriciaMap;
+    /// use fast_radix_tree::PatriciaMap;
     ///
     /// let mut map: PatriciaMap<_> =
     ///     vec![("foo", 1), ("bar", 2), ("baz", 3)].into_iter().collect();
@@ -436,7 +436,7 @@ impl<K: Bytes, V> GenericRadixMap<K, V> {
     /// # Examples
     ///
     /// ```
-    /// use patricia_tree::PatriciaMap;
+    /// use fast_radix_tree::PatriciaMap;
     ///
     /// let map: PatriciaMap<_> =
     ///     vec![("foo", 1), ("bar", 2), ("baz", 3)].into_iter().collect();
@@ -452,7 +452,7 @@ impl<K: Bytes, V> GenericRadixMap<K, V> {
     /// # Examples
     ///
     /// ```
-    /// use patricia_tree::PatriciaMap;
+    /// use fast_radix_tree::PatriciaMap;
     ///
     /// let map: PatriciaMap<_> =
     ///     vec![("foo", 1), ("bar", 2), ("baz", 3)].into_iter().collect();
@@ -470,7 +470,7 @@ impl<K: Bytes, V> GenericRadixMap<K, V> {
     /// # Examples
     ///
     /// ```
-    /// use patricia_tree::PatriciaMap;
+    /// use fast_radix_tree::PatriciaMap;
     ///
     /// let mut map: PatriciaMap<_> =
     ///     vec![("foo", 1), ("bar", 2), ("baz", 3)].into_iter().collect();
@@ -492,7 +492,7 @@ impl<K: Bytes, V> GenericRadixMap<K, V> {
     /// # Examples
     ///
     /// ```
-    /// use patricia_tree::PatriciaMap;
+    /// use fast_radix_tree::PatriciaMap;
     ///
     /// let map: PatriciaMap<_> =
     ///     vec![("foo", 1), ("bar", 2), ("baz", 3)].into_iter().collect();
@@ -513,7 +513,7 @@ impl<K: Bytes, V> GenericRadixMap<K, V> {
     /// # Examples
     ///
     /// ```
-    /// use patricia_tree::PatriciaMap;
+    /// use fast_radix_tree::PatriciaMap;
     ///
     /// let mut map: PatriciaMap<_> =
     ///     vec![("foo", 1), ("bar", 2), ("baz", 3)].into_iter().collect();

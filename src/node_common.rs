@@ -414,6 +414,10 @@ impl<V> Node<V> {
     pub fn remove<K: ?Sized + BorrowedBytes>(&mut self, key: &K) -> Option<V> {
         // Find the index of child
         let key = key.as_bytes();
+        if key.is_empty() && self.label().is_empty() {
+            // we're at root node
+            return self.take_value();
+        }
         let i = self.child_index_with_first(*key.first()?)?;
         let child = &mut self.children_mut()[i];
 
