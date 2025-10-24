@@ -485,8 +485,15 @@ impl<V> Node<V> {
         }
     }
 
-    pub(crate) fn label_len(&self) -> usize {
+    pub fn label_len(&self) -> usize {
         self.header().label_len as usize
+    }
+
+    /// construct into_iter iterates breadth first search style
+    pub fn into_iter_bfs(self) -> IntoIterBfs<V> {
+        IntoIterBfs {
+            queue: vec![(0, self)].into(),
+        }
     }
 }
 
@@ -710,12 +717,15 @@ where
             let next = crate::strip_prefix(key, node.label())?;
             let common_prefix_len = key.len() - next.len();
             let prefix_len = offset + common_prefix_len;
-            match key.first() {
-                None => return Some((prefix_len, node)),
-                Some(first) => {
-                    self.stack
-                        .push((prefix_len, node.child_with_first(*first)?));
+
+            if let Some(first) = next.first() {
+                if let Some(child) = node.child_with_first(*first) {
+                    self.stack.push((prefix_len, child));
                 }
+            }
+            // is_some() so we dont return branch nodes we created internally
+            if common_prefix_len == node.label_len() && node.value().is_some() {
+                return Some((prefix_len, node));
             }
         }
         None
@@ -741,12 +751,15 @@ where
             let next = crate::strip_prefix(key, node.label())?;
             let common_prefix_len = key.len() - next.len();
             let prefix_len = offset + common_prefix_len;
-            match key.first() {
-                None => return Some((prefix_len, node)),
-                Some(first) => {
-                    self.stack
-                        .push((prefix_len, node.child_with_first(*first)?));
+
+            if let Some(first) = next.first() {
+                if let Some(child) = node.child_with_first(*first) {
+                    self.stack.push((prefix_len, child));
                 }
+            }
+            // is_some() so we dont return branch nodes we created internally
+            if common_prefix_len == node.label_len() && node.value().is_some() {
+                return Some((prefix_len, node));
             }
         }
         None
@@ -1250,6 +1263,21 @@ mod tests {
                 (2, "z".as_ref()),
             ]
         );
+
+        let nodes = set
+            .into_iter_bfs()
+            .map(|(level, node)| (level, node.label().to_vec()))
+            .collect::<Vec<_>>();
+        assert_eq!(
+            nodes,
+            [
+                (0, b"".to_vec()),
+                (1, b"ba".to_vec()),
+                (1, b"foo".to_vec()),
+                (2, b"r".to_vec()),
+                (2, b"z".to_vec()),
+            ]
+        );
     }
 
     #[test]
@@ -1480,6 +1508,17 @@ mod tests {
         let mut root = create_bigger_test_tree();
         let children = root.take_children().unwrap();
         assert_eq!(children.len(), 2);
+    }
+
+    #[test]
+    fn test_common_prefixes_iter() {
+        let mut root = create_bigger_test_tree();
+        dbg!(&root);
+        let iter = root
+            .common_prefixes("applesauces")
+            // .map(|(_, n)| n.value())
+            .collect::<Vec<_>>();
+        dbg!(&iter);
     }
 
     #[test]

@@ -998,7 +998,7 @@ mod tests {
         let mut map = StringPatriciaMap::new();
         map.insert("a0/b0", 0);
         map.insert("a1/b1", 0);
-        // dbg!(&map.into_node());
+
         let items: Vec<_> = {
             let prefix = "a0/b0/c0".to_owned();
             map.common_prefix_values(&prefix).collect()
