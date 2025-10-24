@@ -1,30 +1,31 @@
 //! A map based on a patricia tree.
-use crate::tree::{self, PatriciaTree};
+use crate::tree::{self, RadixTree};
 use crate::{BorrowedBytes, Bytes};
 use alloc::{borrow::ToOwned, string::String, vec::Vec};
 use core::{iter::FromIterator, marker::PhantomData};
 
-/// Patricia tree based map with [`Vec<u8>`] as key.
-pub type PatriciaMap<V> = GenericPatriciaMap<Vec<u8>, V>;
+/// Radix tree based map with [`Vec<u8>`] as key.
+pub type RadixMap<V> = GenericRadixMap<Vec<u8>, V>;
 
-/// Patricia tree based map with [`String`] as key.
-pub type StringPatriciaMap<V> = GenericPatriciaMap<String, V>;
+/// Radix tree based map with [`String`] as key.
+pub type StringRadixMap<V> = GenericRadixMap<String, V>;
 
-/// Patricia tree based map.
-pub struct GenericPatriciaMap<K, V> {
-    tree: PatriciaTree<V>,
+/// Radix tree based map.
+#[derive(Debug)]
+pub struct GenericRadixMap<K, V> {
+    tree: RadixTree<V>,
     _key: PhantomData<K>,
 }
 
-impl<K, V> GenericPatriciaMap<K, V> {
-    /// Makes a new empty `PatriciaMap` instance.
+impl<K, V> GenericRadixMap<K, V> {
+    /// Makes a new empty `RadixMap` instance.
     ///
     /// # Examples
     ///
     /// ```
-    /// use patricia_tree::PatriciaMap;
+    /// use fast_radix_tree::RadixMap;
     ///
-    /// let mut map = PatriciaMap::new();
+    /// let mut map = RadixMap::new();
     /// assert!(map.is_empty());
     ///
     /// map.insert("foo", 10);
@@ -35,8 +36,8 @@ impl<K, V> GenericPatriciaMap<K, V> {
     /// assert_eq!(map.get("foo"), None);
     /// ```
     pub fn new() -> Self {
-        GenericPatriciaMap {
-            tree: PatriciaTree::new(),
+        GenericRadixMap {
+            tree: RadixTree::new(),
             _key: PhantomData,
         }
     }
@@ -93,22 +94,25 @@ impl<K, V> GenericPatriciaMap<K, V> {
         self.len() == 0
     }
 
-    pub(crate) fn from_node(node: crate::Node<V>) -> Self {
+    /// create map from node (NOTE: calling methods on node directly seriously mess up your tree)
+    pub fn from_node(node: crate::Node<V>) -> Self {
         Self {
             tree: node.into(),
             _key: PhantomData,
         }
     }
 
-    pub(crate) fn as_node(&self) -> &crate::Node<V> {
+    /// get ref to root node  (NOTE: calling methods on node directly seriously mess up your tree)
+    pub fn as_node(&self) -> &crate::Node<V> {
         self.tree.root()
     }
 
-    pub(crate) fn into_node(self) -> crate::Node<V> {
+    /// get root node out of map (NOTE: calling methods on node directly seriously mess up your tree)
+    pub fn into_node(self) -> crate::Node<V> {
         self.tree.into_root()
     }
 }
-impl<K: Bytes, V> GenericPatriciaMap<K, V> {
+impl<K: Bytes, V> GenericRadixMap<K, V> {
     /// Returns `true` if this map contains a value for the specified key.
     ///
     /// # Examples
@@ -387,7 +391,7 @@ impl<K: Bytes, V> GenericPatriciaMap<K, V> {
     /// ```
     pub fn split_by_prefix<Q: AsRef<K::Borrowed>>(&mut self, prefix: Q) -> Self {
         let subtree = self.tree.split_by_prefix(prefix.as_ref());
-        GenericPatriciaMap {
+        GenericRadixMap {
             tree: subtree,
             _key: PhantomData,
         }
@@ -482,7 +486,7 @@ impl<K: Bytes, V> GenericPatriciaMap<K, V> {
         }
     }
 }
-impl<K: Bytes, V> GenericPatriciaMap<K, V> {
+impl<K: Bytes, V> GenericRadixMap<K, V> {
     /// Gets an iterator over the entries having the given prefix of this map, sorted by key.
     ///
     /// # Examples
@@ -528,12 +532,16 @@ impl<K: Bytes, V> GenericPatriciaMap<K, V> {
             })
     }
 }
-// impl<K: Bytes + fmt::Debug, V: fmt::Debug> fmt::Debug for GenericPatriciaMap<K, V> {
+
+// impl<K: Bytes + fmt::Debug, V: fmt::Debug> fmt::Debug for GenericRadixMap<K, V> {
 //     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-//         f.debug_map().entries(self.iter()).finish()
+//         f.debug_struct("RadixMap")
+//             .field("root", &self.tree.root())
+//             .finish()
 //     }
 // }
-impl<K, V: Clone> Clone for GenericPatriciaMap<K, V> {
+
+impl<K, V: Clone> Clone for GenericRadixMap<K, V> {
     fn clone(&self) -> Self {
         Self {
             tree: self.tree.clone(),
@@ -541,13 +549,13 @@ impl<K, V: Clone> Clone for GenericPatriciaMap<K, V> {
         }
     }
 }
-impl<K, V> Default for GenericPatriciaMap<K, V> {
+impl<K, V> Default for GenericRadixMap<K, V> {
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl<K: Bytes, V> IntoIterator for GenericPatriciaMap<K, V> {
+impl<K: Bytes, V> IntoIterator for GenericRadixMap<K, V> {
     type Item = (K, V);
     type IntoIter = IntoIter<K, V>;
     fn into_iter(self) -> Self::IntoIter {
@@ -559,7 +567,7 @@ impl<K: Bytes, V> IntoIterator for GenericPatriciaMap<K, V> {
     }
 }
 
-impl<K, Q, V> FromIterator<(Q, V)> for GenericPatriciaMap<K, V>
+impl<K, Q, V> FromIterator<(Q, V)> for GenericRadixMap<K, V>
 where
     K: Bytes,
     Q: AsRef<K::Borrowed>,
@@ -568,14 +576,14 @@ where
     where
         I: IntoIterator<Item = (Q, V)>,
     {
-        let mut map = GenericPatriciaMap::new();
+        let mut map = GenericRadixMap::new();
         for (k, v) in iter {
             map.insert(k, v);
         }
         map
     }
 }
-impl<K, Q, V> Extend<(Q, V)> for GenericPatriciaMap<K, V>
+impl<K, Q, V> Extend<(Q, V)> for GenericRadixMap<K, V>
 where
     K: Bytes,
     Q: AsRef<K::Borrowed>,
@@ -767,7 +775,7 @@ mod tests {
             ("9", 9),
         ];
 
-        let mut map = PatriciaMap::new();
+        let mut map = RadixMap::new();
         for &(ref k, v) in input.iter() {
             assert_eq!(map.insert(k, v), None);
             assert_eq!(map.get(k), Some(&v));
@@ -776,7 +784,7 @@ mod tests {
 
     #[test]
     fn clear_works() {
-        let mut map = PatriciaMap::new();
+        let mut map = RadixMap::new();
         assert!(map.is_empty());
 
         map.insert("foo", 1);
@@ -788,7 +796,7 @@ mod tests {
 
     #[test]
     fn into_iter_works() {
-        let map: PatriciaMap<_> = vec![("foo", 1), ("bar", 2), ("baz", 3)]
+        let map: RadixMap<_> = vec![("foo", 1), ("bar", 2), ("baz", 3)]
             .into_iter()
             .collect();
         assert_eq!(
@@ -799,7 +807,7 @@ mod tests {
 
     #[test]
     fn iter_mut_works() {
-        let mut map: PatriciaMap<_> = vec![("foo", 1), ("bar", 2), ("baz", 3)]
+        let mut map: RadixMap<_> = vec![("foo", 1), ("bar", 2), ("baz", 3)]
             .into_iter()
             .collect();
 
@@ -820,7 +828,7 @@ mod tests {
         input.shuffle(&mut rand::rng());
 
         // Insert
-        let mut map = input.iter().cloned().collect::<PatriciaMap<_>>();
+        let mut map = input.iter().cloned().collect::<RadixMap<_>>();
         assert_eq!(map.len(), input.len());
 
         // Get
@@ -856,7 +864,7 @@ mod tests {
 
     #[test]
     fn test_common_word_prefixes() {
-        let mut t = PatriciaMap::new();
+        let mut t = RadixMap::new();
         t.insert(".com.foo.", vec!["b"]);
         t.insert(".", vec!["a"]);
         t.insert(".com.foo.bar.", vec!["c"]);
@@ -874,7 +882,7 @@ mod tests {
 
     #[test]
     fn test_letter_prefixes() {
-        let mut t = PatriciaMap::new();
+        let mut t = RadixMap::new();
         t.insert("x", vec!["x"]);
         t.insert("a", vec!["a"]);
         t.insert("ab", vec!["b"]);
@@ -892,7 +900,7 @@ mod tests {
 
     #[test]
     fn test_common_prefixes() {
-        let mut t = PatriciaMap::new();
+        let mut t = RadixMap::new();
         t.insert("b", vec!["b"]);
         t.insert("a", vec!["a"]);
         t.insert("c", vec!["c"]);
@@ -912,7 +920,7 @@ mod tests {
         dbg!(&results);
         assert!(results.iter().eq(vec![&"a"].into_iter()));
 
-        let mut t = PatriciaMap::new();
+        let mut t = RadixMap::new();
         t.insert("ab", vec!["b"]);
         t.insert("a", vec!["a"]);
         t.insert("abc", vec!["c"]);
@@ -927,7 +935,7 @@ mod tests {
 
         assert!(results.iter().eq(vec![&"a", &"b", &"c"].into_iter()));
 
-        let mut list = PatriciaMap::new();
+        let mut list = RadixMap::new();
         list.insert(b".com.foocatnetworks.".as_ref(), vec![0_u16]);
         list.insert(b".com.foocatnetworks.foo.".as_ref(), vec![1]);
         list.insert(b".com.foocatnetworks.foo.baz.".as_ref(), vec![2]);
@@ -946,7 +954,7 @@ mod tests {
 
     #[test]
     fn issue21() {
-        let mut map = PatriciaMap::new();
+        let mut map = RadixMap::new();
         map.insert("1", 0);
         map.insert("2", 0);
         map.remove("2");
@@ -957,7 +965,7 @@ mod tests {
 
     #[test]
     fn issue35() {
-        let mut map = StringPatriciaMap::<u8>::new();
+        let mut map = StringRadixMap::<u8>::new();
         map.insert("インターポール", 1);
         map.insert("インターポル", 2);
         map.insert("インターリーブ", 3);
@@ -969,7 +977,7 @@ mod tests {
 
     #[test]
     fn issue42_iter_prefix() {
-        let mut map = StringPatriciaMap::new();
+        let mut map = StringRadixMap::new();
         map.insert("a0/b0", 0);
         map.insert("a1/b1", 0);
         let items: Vec<_> = {
@@ -982,7 +990,7 @@ mod tests {
 
     #[test]
     fn issue42_iter_prefix_mut() {
-        let mut map = StringPatriciaMap::new();
+        let mut map = StringRadixMap::new();
         map.insert("a0/b0", 0);
         map.insert("a1/b1", 0);
         let items: Vec<_> = {
@@ -995,7 +1003,7 @@ mod tests {
 
     #[test]
     fn issue42_common_prefix_values() {
-        let mut map = StringPatriciaMap::new();
+        let mut map = StringRadixMap::new();
         map.insert("a0/b0", 0);
         map.insert("a1/b1", 0);
 
@@ -1010,7 +1018,7 @@ mod tests {
     #[test]
     fn test_owned_impl_iter() {
         struct TestTrie<T> {
-            map: GenericPatriciaMap<Vec<u8>, T>,
+            map: GenericRadixMap<Vec<u8>, T>,
         }
 
         impl<T> TestTrie<T> {

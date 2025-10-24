@@ -32,8 +32,8 @@ extern crate alloc;
 use alloc::{borrow::ToOwned, string::String, vec::Vec};
 use core::cmp::Ordering;
 
-pub use map::{GenericPatriciaMap, PatriciaMap, StringPatriciaMap};
-pub use set::{GenericPatriciaSet, PatriciaSet, StringPatriciaSet};
+pub use map::{GenericRadixMap, RadixMap, StringRadixMap};
+pub use set::{GenericRadixSet, RadixSet, StringRadixSet};
 
 pub mod map;
 pub mod set;

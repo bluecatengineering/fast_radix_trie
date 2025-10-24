@@ -197,6 +197,25 @@ impl<V> Node<V> {
         }
     }
 
+    /// will get node even if it wasn't a full match, only a partial match
+    #[inline]
+    pub(crate) fn get_prefix_node<K: ?Sized + BorrowedBytes>(&self, key: &K) -> Option<&Self> {
+        let mut cur = self;
+        let mut key = key.as_bytes();
+        loop {
+            let Some(next) = crate::strip_prefix(key, cur.label()) else {
+                return Some(cur);
+            };
+            key = next;
+            match key.first() {
+                None => return Some(cur),
+                Some(first) => {
+                    cur = cur.child_with_first(*first)?;
+                }
+            }
+        }
+    }
+
     #[inline]
     pub(crate) fn get_node_mut<K: ?Sized + BorrowedBytes>(&mut self, key: &K) -> Option<&mut Self> {
         let mut cur = self;
@@ -723,8 +742,8 @@ where
                     self.stack.push((prefix_len, child));
                 }
             }
-            // is_some() so we dont return branch nodes we created internally
-            if common_prefix_len == node.label_len() && node.value().is_some() {
+            // we could val.is_some() if we dont want to return nodes with no value (that have been split)
+            if common_prefix_len == node.label_len() {
                 return Some((prefix_len, node));
             }
         }
@@ -757,8 +776,8 @@ where
                     self.stack.push((prefix_len, child));
                 }
             }
-            // is_some() so we dont return branch nodes we created internally
-            if common_prefix_len == node.label_len() && node.value().is_some() {
+            // we could val.is_some() if we dont want to return nodes with no value (that have been split)
+            if common_prefix_len == node.label_len() {
                 return Some((prefix_len, node));
             }
         }
@@ -788,7 +807,7 @@ impl<'a, V: 'a> NodeMut<'a, V> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{PatriciaSet, StringPatriciaMap};
+    use crate::{RadixSet, StringRadixMap};
 
     #[test]
     fn root_works() {
@@ -1512,20 +1531,35 @@ mod tests {
 
     #[test]
     fn test_common_prefixes_iter() {
-        let mut root = create_bigger_test_tree();
-        dbg!(&root);
-        let iter = root
+        let root = create_bigger_test_tree();
+        // dbg!(&root);
+        let ret = root
             .common_prefixes("applesauces")
-            // .map(|(_, n)| n.value())
+            .map(|(_, n)| n.value())
             .collect::<Vec<_>>();
-        dbg!(&iter);
+        assert_eq!(ret, vec![None, Some(&1), None, Some(&2), Some(&3)])
     }
 
+    #[test]
+    fn test_issue42_iter_prefix() {
+        let mut root = Node::root();
+        root.insert("a0/b0", 1);
+        root.insert("a1/b1", 2);
+        // dbg!(&root);
+        assert_eq!(root.get_prefix_node("b"), None);
+        assert_eq!(root.get_prefix_node("b0"), None);
+        assert_eq!(root.get_prefix_node("a0").unwrap().value().unwrap(), &1);
+        assert_eq!(dbg!(root.get_prefix_node("a0/b1")), None);
+        assert_eq!(root.get_prefix_node("a1/").unwrap().value().unwrap(), &2);
+        assert_eq!(root.get_prefix_node("a1/b").unwrap().value().unwrap(), &2);
+        assert_eq!(root.get_prefix_node("a1/b2"), None);
+        // assert_eq!(ret, vec![None, Some(&1), None, Some(&2), Some(&3)])
+    }
     #[test]
     fn get_longest_common_prefix_works() {
         let set = ["123", "123456", "1234_67", "123abc", "123def"]
             .iter()
-            .collect::<PatriciaSet>();
+            .collect::<RadixSet>();
 
         let lcp = |key| set.get_longest_common_prefix(key);
         assert_eq!(lcp(""), None);
@@ -1549,7 +1583,7 @@ mod tests {
         .iter()
         .cloned()
         .map(|(k, v)| (String::from(k), v))
-        .collect::<StringPatriciaMap<usize>>();
+        .collect::<StringRadixMap<usize>>();
 
         assert_eq!(map.get_longest_common_prefix_mut(""), None);
         assert_eq!(map.get_longest_common_prefix_mut("12"), None);

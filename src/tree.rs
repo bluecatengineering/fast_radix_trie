@@ -1,3 +1,5 @@
+use core::fmt;
+
 use alloc::vec::Vec;
 
 use crate::{
@@ -6,15 +8,24 @@ use crate::{
     node_common::{self, NodeMut},
 };
 
-#[derive(Debug, Clone)]
-pub struct PatriciaTree<V> {
+#[derive(Clone)]
+pub struct RadixTree<V> {
     root: Node<V>,
     len: usize,
 }
 
-impl<V> PatriciaTree<V> {
+impl<V: fmt::Debug> fmt::Debug for RadixTree<V> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        f.debug_struct("RadixTree")
+            .field("root", &self.root)
+            .field("len", &self.len)
+            .finish()
+    }
+}
+
+impl<V> RadixTree<V> {
     pub fn new() -> Self {
-        PatriciaTree {
+        RadixTree {
             root: Node::root(),
             len: 0,
         }
@@ -153,14 +164,14 @@ impl<V> PatriciaTree<V> {
         }
     }
 }
-impl<V> Default for PatriciaTree<V> {
+impl<V> Default for RadixTree<V> {
     fn default() -> Self {
         Self::new()
     }
 }
-impl<V> From<Node<V>> for PatriciaTree<V> {
+impl<V> From<Node<V>> for RadixTree<V> {
     fn from(f: Node<V>) -> Self {
-        let mut this = PatriciaTree { root: f, len: 0 };
+        let mut this = RadixTree { root: f, len: 0 };
         let count = this.nodes().filter(|n| n.1.value().is_some()).count();
         this.len = count;
         this
@@ -235,7 +246,7 @@ mod tests {
     // it's not recommended to insert/remove values at ""
     #[test]
     fn it_works() {
-        let mut tree = PatriciaTree::new();
+        let mut tree = RadixTree::new();
         assert_eq!(tree.insert("".as_bytes(), 1), None);
         assert_eq!(tree.insert("".as_bytes(), 2), Some(1));
 
