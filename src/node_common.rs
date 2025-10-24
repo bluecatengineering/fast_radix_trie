@@ -197,20 +197,71 @@ impl<V> Node<V> {
         }
     }
 
-    /// will get node even if it wasn't a full match, only a partial match
+    /// will get node based on prefix, so partial matches are allowed. i.e. if a node was inserted for "apples"
+    /// get_prefix_node("ap") will retrieve the node
     #[inline]
-    pub(crate) fn get_prefix_node<K: ?Sized + BorrowedBytes>(&self, key: &K) -> Option<&Self> {
+    pub(crate) fn get_prefix_node<K: ?Sized + BorrowedBytes>(
+        &self,
+        key: &K,
+    ) -> Option<(usize, &Self)> {
         let mut cur = self;
         let mut key = key.as_bytes();
+        let mut len = 0;
         loop {
+            // strip label prefix off key
             let Some(next) = crate::strip_prefix(key, cur.label()) else {
-                return Some(cur);
+                // if label is longer than key, we are at final node,
+                // see if there is a partial match at the current node
+                if crate::strip_prefix(cur.label(), key).is_some() {
+                    return Some((len + key.len(), cur));
+                } else {
+                    // key doesn't partially match label, so return None
+                    return None;
+                }
             };
             key = next;
+            len += cur.label_len();
             match key.first() {
-                None => return Some(cur),
+                // end of the line-- got an exact match
+                None => return Some((len, cur)),
                 Some(first) => {
+                    // find child or return None
                     cur = cur.child_with_first(*first)?;
+                }
+            }
+        }
+    }
+
+    /// will get mutable node based on prefix, so partial matches are allowed. i.e. if a node was inserted for "apples"
+    /// get_prefix_node_mut("ap") will retrieve the node
+    #[inline]
+    pub(crate) fn get_prefix_node_mut<K: ?Sized + BorrowedBytes>(
+        &mut self,
+        key: &K,
+    ) -> Option<(usize, &mut Self)> {
+        let mut cur = self;
+        let mut key = key.as_bytes();
+        let mut len = 0;
+        loop {
+            // strip label prefix off key
+            let Some(next) = crate::strip_prefix(key, cur.label()) else {
+                // if label is longer than key, we are at final node,
+                // see if there is a partial match at the current node
+                if crate::strip_prefix(cur.label(), key).is_some() {
+                    return Some((len + key.len(), cur));
+                } else {
+                    // key doesn't partially match label, so return None
+                    return None;
+                }
+            };
+            key = next;
+            len += cur.label_len();
+            match key.first() {
+                // end of the line-- got an exact match
+                None => return Some((len, cur)),
+                Some(first) => {
+                    // find child or return None
+                    cur = cur.child_with_first_mut(*first)?;
                 }
             }
         }
@@ -1548,12 +1599,14 @@ mod tests {
         // dbg!(&root);
         assert_eq!(root.get_prefix_node("b"), None);
         assert_eq!(root.get_prefix_node("b0"), None);
-        assert_eq!(root.get_prefix_node("a0").unwrap().value().unwrap(), &1);
+        assert_eq!(root.get_prefix_node("a0").unwrap().1.value().unwrap(), &1);
+        assert_eq!(root.get_prefix_node("a0").unwrap().0, 2);
         assert_eq!(dbg!(root.get_prefix_node("a0/b1")), None);
-        assert_eq!(root.get_prefix_node("a1/").unwrap().value().unwrap(), &2);
-        assert_eq!(root.get_prefix_node("a1/b").unwrap().value().unwrap(), &2);
+        assert_eq!(root.get_prefix_node("a1/").unwrap().1.value().unwrap(), &2);
+        assert_eq!(root.get_prefix_node("a1/").unwrap().0, 3);
+        assert_eq!(root.get_prefix_node("a1/b").unwrap().1.value().unwrap(), &2);
+        assert_eq!(root.get_prefix_node("a1/b").unwrap().0, 4);
         assert_eq!(root.get_prefix_node("a1/b2"), None);
-        // assert_eq!(ret, vec![None, Some(&1), None, Some(&2), Some(&3)])
     }
     #[test]
     fn get_longest_common_prefix_works() {

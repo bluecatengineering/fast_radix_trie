@@ -87,12 +87,12 @@ impl<V> RadixTree<V> {
         &self,
         prefix: &K,
     ) -> Option<(usize, Nodes<'_, V>)> {
-        if let Some(node) = self.root.get_node(prefix) {
+        if let Some((common_len, node)) = self.root.get_prefix_node(prefix) {
             let nodes = Nodes {
                 nodes: node.iter(),
                 label_lens: Vec::new(),
             };
-            Some((prefix.as_bytes().len() - node.label_len(), nodes))
+            Some((prefix.as_bytes().len() - common_len, nodes))
         } else {
             None
         }
@@ -101,13 +101,12 @@ impl<V> RadixTree<V> {
         &mut self,
         prefix: &K,
     ) -> Option<(usize, NodesMut<'_, V>)> {
-        if let Some(node) = self.root.get_node_mut(prefix) {
-            let len = node.label_len();
+        if let Some((common_len, node)) = self.root.get_prefix_node_mut(prefix) {
             let nodes = NodesMut {
                 nodes: node.iter_mut(),
                 label_lens: Vec::new(),
             };
-            Some((prefix.as_bytes().len() - len, nodes))
+            Some((prefix.as_bytes().len() - common_len, nodes))
         } else {
             None
         }
