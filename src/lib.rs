@@ -10,9 +10,9 @@
 //! # Examples
 //!
 //! ```
-//! use fast_radix_tree::PatriciaMap;
+//! use fast_radix_tree::RadixMap;
 //!
-//! let mut map = PatriciaMap::new();
+//! let mut map = RadixMap::new();
 //! map.insert("foo", 1);
 //! map.insert("bar", 2);
 //! map.insert("baz", 3);

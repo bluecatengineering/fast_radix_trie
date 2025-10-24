@@ -60,7 +60,7 @@ $ /usr/bin/time -f "# ELAPSED: %E\n# MEMORY: %M" cargo run --example insert_line
 # ELAPSED: 0:10.90
 # MEMORY: 1112068  // 1,086 MB
 
-// PatriciaSet
+// RadixSet
 $ /usr/bin/time -f "# ELAPSED: %E\n# MEMORY: %M" cargo run --example insert_lines --release -- --kind patricia < enwiki-latest-all-titles-in-ns0
 # LINES: 13450823
 # ELAPSED: 1:12.55
@@ -85,7 +85,7 @@ $ /usr/bin/time -f "# ELAPSED: %E\n# MEMORY: %M" cargo run --example insert_line
 # ELAPSED: 0:06.85
 # MEMORY: 942236   // 920 MB
 
-// PatriciaSet
+// RadixSet
 $ /usr/bin/time -f "# ELAPSED: %E\n# MEMORY: %M" cargo run --example insert_lines --release -- --kind patricia < googlebooks-eng-all-5gram-20120701-0
 # LINES: 9814743
 # ELAPSED: 0:25.62

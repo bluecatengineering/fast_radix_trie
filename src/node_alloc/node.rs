@@ -174,15 +174,21 @@ impl<V> Node<V> {
         }
     }
 
-    /// will prefix the current nodes' label with `prefix`
+    /// set label with prefix slice
+    /// NOTE: you can seriously mess up a node calling these functions manually
     pub fn prefix_label(&mut self, prefix: &[u8]) {
-        self.set_label(prefix, true)
+        self.modify_label(prefix, true);
     }
 
-    /// will reallocate node with label set to new_label. This can seriously
-    /// break your trie if called on nodes!
-    #[inline]
-    pub fn set_label(&mut self, new_label: &[u8], prefix: bool) {
+    /// swap label with new one (will realloc node)
+    /// NOTE: you can seriously mess up a node calling these functions manually
+    pub fn replace_label(&mut self, prefix: &[u8]) {
+        self.modify_label(prefix, false);
+    }
+
+    /// reallocate node with new_label either prefixed the current one or replacing it
+    /// NOTE: you can seriously mess up a node calling these functions manually
+    pub(crate) fn modify_label(&mut self, new_label: &[u8], prefix: bool) {
         let new_header = NodeHeader {
             flags: self.flags(),
             label_len: if prefix {

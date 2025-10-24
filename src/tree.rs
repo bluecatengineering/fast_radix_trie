@@ -62,10 +62,7 @@ impl<V> RadixTree<V> {
         }
     }
     pub fn longest_common_prefix_len<K: ?Sized + BorrowedBytes>(&self, key: &K) -> usize {
-        self.root
-            .get_longest_common_prefix(key)
-            .map(|(len, _)| len)
-            .unwrap_or(0)
+        self.root.longest_common_prefix_len(key)
     }
     pub fn get_longest_common_prefix<'a, K: ?Sized + BorrowedBytes>(
         &self,

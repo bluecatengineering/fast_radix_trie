@@ -208,20 +208,11 @@ impl<V> Node<V> {
         let mut key = key.as_bytes();
         loop {
             // strip label prefix off key
-            let Some(next) = crate::strip_prefix(key, cur.label()) else {
-                // if label is longer than key, we are at final node,
-                // see if there is a partial match at the current node
-                if crate::strip_prefix(cur.label(), key).is_some() {
-                    return Some((key.len(), cur));
-                } else {
-                    // key doesn't partially match label, so return None
-                    return None;
-                }
-            };
-            key = next;
+            let (offset, _) = crate::longest_common_prefix(key, cur.label());
+            key = &key[offset..];
             match key.first() {
                 // end of the line-- got an exact match
-                None => return Some((cur.label_len(), cur)),
+                None => return Some((offset, cur)),
                 Some(first) => {
                     // find child or return None
                     cur = cur.child_with_first(*first)?;
@@ -240,21 +231,12 @@ impl<V> Node<V> {
         let mut cur = self;
         let mut key = key.as_bytes();
         loop {
-            // strip label prefix off key
-            let Some(next) = crate::strip_prefix(key, cur.label()) else {
-                // if label is longer than key, we are at final node,
-                // see if there is a partial match at the current node
-                if crate::strip_prefix(cur.label(), key).is_some() {
-                    return Some((key.len(), cur));
-                } else {
-                    // key doesn't partially match label, so return None
-                    return None;
-                }
-            };
-            key = next;
+            // get common offset point where labels differ
+            let (offset, _) = crate::longest_common_prefix(key, cur.label());
+            key = &key[offset..];
             match key.first() {
                 // end of the line-- got an exact match
-                None => return Some((cur.label_len(), cur)),
+                None => return Some((offset, cur)),
                 Some(first) => {
                     // find child or return None
                     cur = cur.child_with_first_mut(*first)?;
@@ -284,6 +266,7 @@ impl<V> Node<V> {
         let mut suffix = key;
         let mut parent: *mut Node<V> = &raw mut *cur;
         loop {
+            // TODO: write using longest_common_prefix?
             let Some(key_suffix) = crate::strip_prefix(suffix, cur.label()) else {
                 break;
             };
@@ -300,49 +283,70 @@ impl<V> Node<V> {
         let parent = unsafe { &mut *parent };
 
         // SAFETY: using `cur` after mutating parent can cause UB
-        match cur.label().first() {
-            Some(first) => {
-                let child_index = parent.child_index_with_first(*first)?;
-                let child = &mut parent.children_mut()[child_index];
-                // if prefix ends mid label then we must split the node
-                if !suffix.is_empty() && suffix.len() < child.label_len() {
-                    unsafe {
-                        // split node so we can set label properly
-                        child.split_at(suffix.len(), None);
-                        // remove node we created
-                        let mut detached = child.remove_child(0);
-                        if parent.children_len() != 0 {
-                            // remove split node that may have been left over
-                            parent.remove_child(child_index);
-                        }
-                        // set label
-                        detached.prefix_label(key);
-                        Some(detached)
-                    }
-                } else if suffix == child.label() {
-                    // we are at a leaf
-                    unsafe {
-                        let detached = parent.remove_child(child_index);
-                        parent.try_merge_child();
-                        Some(detached)
-                    }
-                } else if suffix.is_empty() {
-                    // full match on node
-                    let mut detached = unsafe { parent.remove_child(child_index) };
-                    detached.set_label(key, false);
-                    parent.try_merge_child();
-                    Some(detached)
-                } else {
-                    // if suffix > child.label_len then we didn't descend far enough?
-                    None
+        let first = cur.label().first()?;
+
+        let child_index = parent.child_index_with_first(*first)?;
+        let child = &mut parent.children_mut()[child_index];
+        // if prefix ends mid label then we must split the node
+        if !suffix.is_empty() && suffix.len() < child.label_len() {
+            unsafe {
+                // split node so we can set label properly
+                child.split_at(suffix.len(), None);
+                // remove node we created
+                let mut detached = child.remove_child(0);
+                if parent.children_len() != 0 {
+                    // remove split node that may have been left over
+                    parent.remove_child(child_index);
                 }
+                // set label
+                detached.prefix_label(key);
+                Some(detached)
             }
-            None => None,
+        } else if suffix == child.label() {
+            // we are at a leaf
+            unsafe {
+                let detached = parent.remove_child(child_index);
+                parent.try_merge_child();
+                Some(detached)
+            }
+        } else if suffix.is_empty() {
+            // full match on node
+            let mut detached = unsafe { parent.remove_child(child_index) };
+            detached.replace_label(key);
+            parent.try_merge_child();
+            Some(detached)
+        } else {
+            // if suffix > child.label_len then we didn't descend far enough?
+            None
         }
     }
 
     pub(crate) fn get_mut<K: ?Sized + BorrowedBytes>(&mut self, key: &K) -> Option<&mut V> {
         self.get_node_mut(key).and_then(|n| n.value_mut())
+    }
+
+    pub(crate) fn longest_common_prefix_len<K: ?Sized + BorrowedBytes>(&self, key: &K) -> usize {
+        let mut cur = self;
+        let mut key = key.as_bytes();
+        let mut matched_len = 0;
+
+        loop {
+            let (offset, _next) = crate::longest_common_prefix(key, cur.label());
+            dbg!(offset);
+            key = &key[offset..];
+            matched_len += offset;
+
+            if key.is_empty() {
+                return matched_len;
+            }
+
+            match cur.child_with_first(unsafe { *key.get_unchecked(0) }) {
+                None => return matched_len,
+                Some(child) => {
+                    cur = child;
+                }
+            }
+        }
     }
 
     pub(crate) fn get_longest_common_prefix<K: ?Sized + BorrowedBytes>(
@@ -355,6 +359,7 @@ impl<V> Node<V> {
         let mut last_match = None;
 
         loop {
+            // TODO: write with crate::longest_common_prefix?
             let Some(remaining) = crate::strip_prefix(key, cur.label()) else {
                 return last_match;
             };
@@ -555,6 +560,7 @@ impl<V> Node<V> {
         }
     }
 
+    /// return node label length
     pub fn label_len(&self) -> usize {
         self.header().label_len as usize
     }

@@ -47,9 +47,9 @@ impl<K, V> GenericRadixMap<K, V> {
     /// # Examples
     ///
     /// ```
-    /// use fast_radix_tree::PatriciaMap;
+    /// use fast_radix_tree::RadixMap;
     ///
-    /// let mut map = PatriciaMap::new();
+    /// let mut map = RadixMap::new();
     /// map.insert("foo", 1);
     /// map.clear();
     /// assert!(map.is_empty());
@@ -63,9 +63,9 @@ impl<K, V> GenericRadixMap<K, V> {
     /// # Examples
     ///
     /// ```
-    /// use fast_radix_tree::PatriciaMap;
+    /// use fast_radix_tree::RadixMap;
     ///
-    /// let mut map = PatriciaMap::new();
+    /// let mut map = RadixMap::new();
     /// map.insert("foo", 1);
     /// map.insert("bar", 2);
     /// assert_eq!(map.len(), 2);
@@ -79,9 +79,9 @@ impl<K, V> GenericRadixMap<K, V> {
     /// # Examples
     ///
     /// ```
-    /// use fast_radix_tree::PatriciaMap;
+    /// use fast_radix_tree::RadixMap;
     ///
-    /// let mut map = PatriciaMap::new();
+    /// let mut map = RadixMap::new();
     /// assert!(map.is_empty());
     ///
     /// map.insert("foo", 1);
@@ -118,9 +118,9 @@ impl<K: Bytes, V> GenericRadixMap<K, V> {
     /// # Examples
     ///
     /// ```
-    /// use fast_radix_tree::PatriciaMap;
+    /// use fast_radix_tree::RadixMap;
     ///
-    /// let mut map = PatriciaMap::new();
+    /// let mut map = RadixMap::new();
     /// map.insert("foo", 1);
     /// assert!(map.contains_key("foo"));
     /// assert!(!map.contains_key("bar"));
@@ -134,9 +134,9 @@ impl<K: Bytes, V> GenericRadixMap<K, V> {
     /// # Examples
     ///
     /// ```
-    /// use fast_radix_tree::PatriciaMap;
+    /// use fast_radix_tree::RadixMap;
     ///
-    /// let mut map = PatriciaMap::new();
+    /// let mut map = RadixMap::new();
     /// map.insert("foo", 1);
     /// assert_eq!(map.get("foo"), Some(&1));
     /// assert_eq!(map.get("bar"), None);
@@ -150,9 +150,9 @@ impl<K: Bytes, V> GenericRadixMap<K, V> {
     /// # Examples
     ///
     /// ```
-    /// use fast_radix_tree::PatriciaMap;
+    /// use fast_radix_tree::RadixMap;
     ///
-    /// let mut map = PatriciaMap::new();
+    /// let mut map = RadixMap::new();
     /// map.insert("foo", 1);
     /// map.get_mut("foo").map(|v| *v = 2);
     /// assert_eq!(map.get("foo"), Some(&2));
@@ -167,9 +167,9 @@ impl<K: Bytes, V> GenericRadixMap<K, V> {
     /// # Examples
     ///
     /// ```
-    /// use fast_radix_tree::PatriciaMap;
+    /// use fast_radix_tree::RadixMap;
     ///
-    /// let mut map = PatriciaMap::new();
+    /// let mut map = RadixMap::new();
     /// map.insert("foo", 1);
     /// map.insert("foobar", 2);
     /// assert_eq!(map.get_longest_common_prefix("fo"), None);
@@ -192,9 +192,9 @@ impl<K: Bytes, V> GenericRadixMap<K, V> {
     /// # Examples
     ///
     /// ```
-    /// use fast_radix_tree::PatriciaMap;
+    /// use fast_radix_tree::RadixMap;
     ///
-    /// let mut map = PatriciaMap::new();
+    /// let mut map = RadixMap::new();
     /// map.insert("foo", 1);
     /// map.insert("foobar", 2);
     /// assert_eq!(map.get_longest_common_prefix_mut("fo"), None);
@@ -223,9 +223,9 @@ impl<K: Bytes, V> GenericRadixMap<K, V> {
     /// # Examples
     ///
     /// ```
-    /// use fast_radix_tree::PatriciaMap;
+    /// use fast_radix_tree::RadixMap;
     ///
-    /// let mut map = PatriciaMap::new();
+    /// let mut map = RadixMap::new();
     /// map.insert("foo", 1);
     /// map.insert("foobar", 2);
     /// assert_eq!(map.longest_common_prefix_len("fo"), 2);
@@ -250,9 +250,9 @@ impl<K: Bytes, V> GenericRadixMap<K, V> {
     /// # Examples
     ///
     /// ```
-    /// use fast_radix_tree::PatriciaMap;
+    /// use fast_radix_tree::RadixMap;
     ///
-    /// let mut map = PatriciaMap::new();
+    /// let mut map = RadixMap::new();
     /// assert_eq!(map.insert("foo", 1), None);
     /// assert_eq!(map.get("foo"), Some(&1));
     /// assert_eq!(map.insert("foo", 2), Some(1));
@@ -267,9 +267,9 @@ impl<K: Bytes, V> GenericRadixMap<K, V> {
     /// # Examples
     ///
     /// ```
-    /// use fast_radix_tree::PatriciaMap;
+    /// use fast_radix_tree::RadixMap;
     ///
-    /// let mut map = PatriciaMap::new();
+    /// let mut map = RadixMap::new();
     /// map.insert("foo", 1);
     /// assert_eq!(map.remove("foo"), Some(1));
     /// assert_eq!(map.remove("foo"), None);
@@ -283,9 +283,9 @@ impl<K: Bytes, V> GenericRadixMap<K, V> {
     /// # Example
     ///
     /// ```
-    /// use fast_radix_tree::PatriciaMap;
+    /// use fast_radix_tree::RadixMap;
     ///
-    /// let mut t = PatriciaMap::new();
+    /// let mut t = RadixMap::new();
     /// t.insert("a", vec!["a"]);
     /// t.insert("x", vec!["x"]);
     /// t.insert("ab", vec!["b"]);
@@ -316,8 +316,8 @@ impl<K: Bytes, V> GenericRadixMap<K, V> {
     /// # Example
     ///
     /// ```
-    /// use fast_radix_tree::PatriciaMap;
-    /// let mut t = PatriciaMap::new();
+    /// use fast_radix_tree::RadixMap;
+    /// let mut t = RadixMap::new();
     /// t.insert("a", vec!["a"]);
     /// t.insert("x", vec!["x"]);
     /// t.insert("ab", vec!["b"]);
@@ -345,8 +345,8 @@ impl<K: Bytes, V> GenericRadixMap<K, V> {
     /// # Example
     ///
     /// ```
-    /// use fast_radix_tree::PatriciaMap;
-    /// let mut t = PatriciaMap::new();
+    /// use fast_radix_tree::RadixMap;
+    /// let mut t = RadixMap::new();
     /// t.insert("a", vec!["a"]);
     /// t.insert("x", vec!["x"]);
     /// t.insert("ab", vec!["b"]);
@@ -373,9 +373,9 @@ impl<K: Bytes, V> GenericRadixMap<K, V> {
     /// # Examples
     ///
     /// ```
-    /// use fast_radix_tree::PatriciaMap;
+    /// use fast_radix_tree::RadixMap;
     ///
-    /// let mut a = PatriciaMap::new();
+    /// let mut a = RadixMap::new();
     /// a.insert("rust", 1);
     /// a.insert("ruby", 2);
     /// a.insert("bash", 3);
@@ -402,9 +402,9 @@ impl<K: Bytes, V> GenericRadixMap<K, V> {
     /// # Examples
     ///
     /// ```
-    /// use fast_radix_tree::PatriciaMap;
+    /// use fast_radix_tree::RadixMap;
     ///
-    /// let map: PatriciaMap<_> =
+    /// let map: RadixMap<_> =
     ///     vec![("foo", 1), ("bar", 2), ("baz", 3)].into_iter().collect();
     /// assert_eq!(vec![(Vec::from("bar"), &2), ("baz".into(), &3), ("foo".into(), &1)],
     ///            map.iter().collect::<Vec<_>>());
@@ -418,9 +418,9 @@ impl<K: Bytes, V> GenericRadixMap<K, V> {
     /// # Examples
     ///
     /// ```
-    /// use fast_radix_tree::PatriciaMap;
+    /// use fast_radix_tree::RadixMap;
     ///
-    /// let mut map: PatriciaMap<_> =
+    /// let mut map: RadixMap<_> =
     ///     vec![("foo", 1), ("bar", 2), ("baz", 3)].into_iter().collect();
     /// for (_, v) in map.iter_mut() {
     ///    *v += 10;
@@ -436,9 +436,9 @@ impl<K: Bytes, V> GenericRadixMap<K, V> {
     /// # Examples
     ///
     /// ```
-    /// use fast_radix_tree::PatriciaMap;
+    /// use fast_radix_tree::RadixMap;
     ///
-    /// let map: PatriciaMap<_> =
+    /// let map: RadixMap<_> =
     ///     vec![("foo", 1), ("bar", 2), ("baz", 3)].into_iter().collect();
     /// assert_eq!(vec![Vec::from("bar"), "baz".into(), "foo".into()],
     ///            map.keys().collect::<Vec<_>>());
@@ -452,9 +452,9 @@ impl<K: Bytes, V> GenericRadixMap<K, V> {
     /// # Examples
     ///
     /// ```
-    /// use fast_radix_tree::PatriciaMap;
+    /// use fast_radix_tree::RadixMap;
     ///
-    /// let map: PatriciaMap<_> =
+    /// let map: RadixMap<_> =
     ///     vec![("foo", 1), ("bar", 2), ("baz", 3)].into_iter().collect();
     /// assert_eq!(vec![2, 3, 1],
     ///            map.values().cloned().collect::<Vec<_>>());
@@ -470,9 +470,9 @@ impl<K: Bytes, V> GenericRadixMap<K, V> {
     /// # Examples
     ///
     /// ```
-    /// use fast_radix_tree::PatriciaMap;
+    /// use fast_radix_tree::RadixMap;
     ///
-    /// let mut map: PatriciaMap<_> =
+    /// let mut map: RadixMap<_> =
     ///     vec![("foo", 1), ("bar", 2), ("baz", 3)].into_iter().collect();
     /// for v in map.values_mut() {
     ///     *v += 10;
@@ -492,9 +492,9 @@ impl<K: Bytes, V> GenericRadixMap<K, V> {
     /// # Examples
     ///
     /// ```
-    /// use fast_radix_tree::PatriciaMap;
+    /// use fast_radix_tree::RadixMap;
     ///
-    /// let map: PatriciaMap<_> =
+    /// let map: RadixMap<_> =
     ///     vec![("foo", 1), ("bar", 2), ("baz", 3)].into_iter().collect();
     /// assert_eq!(vec![(Vec::from("bar"), &2), ("baz".into(), &3)],
     ///            map.iter_prefix(b"ba").collect::<Vec<_>>());
@@ -513,9 +513,9 @@ impl<K: Bytes, V> GenericRadixMap<K, V> {
     /// # Examples
     ///
     /// ```
-    /// use fast_radix_tree::PatriciaMap;
+    /// use fast_radix_tree::RadixMap;
     ///
-    /// let mut map: PatriciaMap<_> =
+    /// let mut map: RadixMap<_> =
     ///     vec![("foo", 1), ("bar", 2), ("baz", 3)].into_iter().collect();
     /// assert_eq!(vec![(Vec::from("bar"), &mut 2), ("baz".into(), &mut 3)],
     ///            map.iter_prefix_mut(b"ba").collect::<Vec<_>>());
@@ -598,7 +598,7 @@ where
     }
 }
 
-/// An iterator over a `PatriciaMap`'s entries.
+/// An iterator over a `RadixMap`'s entries.
 #[derive(Debug)]
 pub struct Iter<'a, K, V: 'a> {
     nodes: tree::Nodes<'a, V>,
@@ -631,7 +631,7 @@ impl<'a, K: Bytes, V: 'a> Iterator for Iter<'a, K, V> {
     }
 }
 
-/// An owning iterator over a `PatriciaMap`'s entries.
+/// An owning iterator over a `RadixMap`'s entries.
 #[derive(Debug)]
 pub struct IntoIter<K, V> {
     nodes: tree::IntoNodes<V>,
@@ -652,7 +652,7 @@ impl<K: Bytes, V> Iterator for IntoIter<K, V> {
     }
 }
 
-/// A mutable iterator over a `PatriciaMap`'s entries.
+/// A mutable iterator over a `RadixMap`'s entries.
 #[derive(Debug)]
 pub struct IterMut<'a, K, V: 'a> {
     nodes: tree::NodesMut<'a, V>,
@@ -685,7 +685,7 @@ impl<'a, K: Bytes, V: 'a> Iterator for IterMut<'a, K, V> {
     }
 }
 
-/// An iterator over a `PatriciaMap`'s keys.
+/// An iterator over a `RadixMap`'s keys.
 #[derive(Debug)]
 pub struct Keys<'a, K, V: 'a>(Iter<'a, K, V>);
 impl<'a, K: Bytes, V: 'a> Iterator for Keys<'a, K, V> {
@@ -695,7 +695,7 @@ impl<'a, K: Bytes, V: 'a> Iterator for Keys<'a, K, V> {
     }
 }
 
-/// An iterator over a `PatriciaMap`'s values.
+/// An iterator over a `RadixMap`'s values.
 #[derive(Debug)]
 pub struct Values<'a, V: 'a> {
     nodes: tree::Nodes<'a, V>,
@@ -712,7 +712,7 @@ impl<'a, V: 'a> Iterator for Values<'a, V> {
     }
 }
 
-/// A mutable iterator over a `PatriciaMap`'s values.
+/// A mutable iterator over a `RadixMap`'s values.
 #[derive(Debug)]
 pub struct ValuesMut<'a, V: 'a> {
     nodes: tree::NodesMut<'a, V>,
@@ -729,7 +729,7 @@ impl<'a, V: 'a> Iterator for ValuesMut<'a, V> {
     }
 }
 
-/// An iterator over entries in a `PatriciaMap` that share a common prefix with
+/// An iterator over entries in a `RadixMap` that share a common prefix with
 /// a given key.
 #[derive(Debug)]
 pub struct CommonPrefixesIter<'a, 'b, K: ?Sized, V> {

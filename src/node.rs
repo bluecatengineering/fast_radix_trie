@@ -122,9 +122,6 @@ impl<V> Node<V> {
         let old_ptr_data = self.ptr_data();
         let value = self.take_value();
 
-        // dbg!(self.ptr_data().layout);
-        // dbg!(new_header.ptr_data::<V>().layout);
-
         unsafe {
             let raw_ptr = alloc::alloc::realloc(
                 self.ptr.as_ptr().cast(),
@@ -163,12 +160,18 @@ impl<V> Node<V> {
     /// set label with prefix slice
     /// NOTE: you can seriously mess up a node calling these functions manually
     pub fn prefix_label(&mut self, prefix: &[u8]) {
-        self.set_label(prefix, true);
+        self.modify_label(prefix, true);
+    }
+
+    /// swap label with new one (will realloc node)
+    /// NOTE: you can seriously mess up a node calling these functions manually
+    pub fn replace_label(&mut self, prefix: &[u8]) {
+        self.modify_label(prefix, false);
     }
 
     /// reallocate node with new_label either prefixed the current one or replacing it
     /// NOTE: you can seriously mess up a node calling these functions manually
-    pub fn set_label(&mut self, new_label: &[u8], prefix: bool) {
+    pub(crate) fn modify_label(&mut self, new_label: &[u8], prefix: bool) {
         let new_header = NodeHeader {
             label_len: if prefix {
                 new_label.len() + self.label_len()

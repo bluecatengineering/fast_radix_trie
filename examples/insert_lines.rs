@@ -1,5 +1,4 @@
-// use radix_trie::{PatriciaMap, PatriciaSet};
-use fast_radix_tree::node::Node;
+use fast_radix_tree::{RadixMap, RadixSet};
 use std::{
     collections::{BTreeSet, HashSet},
     io::BufRead,
@@ -11,14 +10,14 @@ fn main() -> noargs::Result<()> {
 
     let kind = noargs::opt("kind")
         .doc("Data structure kindt")
-        .ty("patricia | hash | btree | count | node")
-        .default("patricia")
+        .ty("radix | radix_map | hash | btree | count")
+        .default("radix")
         .take(&mut args)
         .then(|a| {
             let value = a.value();
             match value {
-                "patricia" | "hash" | "btree" | "count" | "node" => Ok(value.to_string()),
-                _ => Err("must be one of: patricia, hash, btree, count, node"),
+                "radix_map" | "radix" | "hash" | "btree" | "count" => Ok(value.to_string()),
+                _ => Err("must be one of: radix, radix_map, hash, btree, count"),
             }
         })?;
     if let Some(help) = args.finish()? {
@@ -27,26 +26,19 @@ fn main() -> noargs::Result<()> {
     }
 
     match kind.as_str() {
-        // "patricia_map" => {
-        //     let mut set = PatriciaMap::new();
-        //     each_line(|line| {
-        //         set.insert(line, rand::random::<u64>());
-        //     });
-        //     println!("# LINES: {}", set.len());
-        // }
-        // "patricia" => {
-        //     let mut set = PatriciaSet::new();
-        //     each_line(|line| {
-        //         set.insert(line);
-        //     });
-        //     println!("# LINES: {}", set.len());
-        // }
-        "node" => {
-            let mut set = Node::root();
+        "radix_map" => {
+            let mut set = RadixMap::new();
             each_line(|line| {
-                set.insert(line.as_str(), ());
+                set.insert(line, rand::random::<u64>());
             });
-            // println!("# LINES: {}", set.len());
+            println!("# LINES: {}", set.len());
+        }
+        "radix" => {
+            let mut set = RadixSet::new();
+            each_line(|line| {
+                set.insert(line);
+            });
+            println!("# LINES: {}", set.len());
         }
         "hash" => {
             let mut set = HashSet::new();

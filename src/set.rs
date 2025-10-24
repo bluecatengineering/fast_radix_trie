@@ -17,14 +17,14 @@ pub struct GenericRadixSet<T> {
     map: GenericRadixMap<T, ()>,
 }
 impl<T> GenericRadixSet<T> {
-    /// Makes a new empty [`GenericPatriciaSet`] instance.
+    /// Makes a new empty [`GenericRadixSet`] instance.
     ///
     /// # Examples
     ///
     /// ```
-    /// use fast_radix_tree::PatriciaSet;
+    /// use fast_radix_tree::RadixSet;
     ///
-    /// let set = PatriciaSet::new();
+    /// let set = RadixSet::new();
     /// assert!(set.is_empty());
     /// ```
     pub fn new() -> Self {
@@ -38,9 +38,9 @@ impl<T> GenericRadixSet<T> {
     /// # Examples
     ///
     /// ```
-    /// use fast_radix_tree::PatriciaSet;
+    /// use fast_radix_tree::RadixSet;
     ///
-    /// let mut set = PatriciaSet::new();
+    /// let mut set = RadixSet::new();
     /// set.insert("foo");
     /// set.insert("bar");
     /// assert_eq!(set.len(), 2);
@@ -54,9 +54,9 @@ impl<T> GenericRadixSet<T> {
     /// # Examples
     ///
     /// ```
-    /// use fast_radix_tree::PatriciaSet;
+    /// use fast_radix_tree::RadixSet;
     ///
-    /// let mut set = PatriciaSet::new();
+    /// let mut set = RadixSet::new();
     /// assert!(set.is_empty());
     ///
     /// set.insert("foo");
@@ -74,9 +74,9 @@ impl<T> GenericRadixSet<T> {
     /// # Examples
     ///
     /// ```
-    /// use fast_radix_tree::PatriciaSet;
+    /// use fast_radix_tree::RadixSet;
     ///
-    /// let mut set = PatriciaSet::new();
+    /// let mut set = RadixSet::new();
     /// set.insert("foo");
     /// set.clear();
     /// assert!(set.is_empty());
@@ -108,9 +108,9 @@ impl<T: Bytes> GenericRadixSet<T> {
     /// # Examples
     ///
     /// ```
-    /// use fast_radix_tree::PatriciaSet;
+    /// use fast_radix_tree::RadixSet;
     ///
-    /// let mut set = PatriciaSet::new();
+    /// let mut set = RadixSet::new();
     /// set.insert("foo");
     /// assert!(set.contains("foo"));
     /// assert!(!set.contains("bar"));
@@ -124,9 +124,9 @@ impl<T: Bytes> GenericRadixSet<T> {
     /// # Examples
     ///
     /// ```
-    /// use fast_radix_tree::PatriciaSet;
+    /// use fast_radix_tree::RadixSet;
     ///
-    /// let mut set = PatriciaSet::new();
+    /// let mut set = RadixSet::new();
     ///
     /// set.insert("foo");
     /// set.insert("foobar");
@@ -150,9 +150,9 @@ impl<T: Bytes> GenericRadixSet<T> {
     /// # Examples
     ///
     /// ```
-    /// use fast_radix_tree::PatriciaSet;
+    /// use fast_radix_tree::RadixSet;
     ///
-    /// let mut set = PatriciaSet::new();
+    /// let mut set = RadixSet::new();
     /// set.insert("foo");
     /// set.insert("foobar");
     /// assert_eq!(set.longest_common_prefix_len("fo"), 2);
@@ -177,9 +177,9 @@ impl<T: Bytes> GenericRadixSet<T> {
     /// # Examples
     ///
     /// ```
-    /// use fast_radix_tree::PatriciaSet;
+    /// use fast_radix_tree::RadixSet;
     ///
-    /// let mut set = PatriciaSet::new();
+    /// let mut set = RadixSet::new();
     /// assert!(set.insert("foo"));
     /// assert!(!set.insert("foo"));
     /// assert_eq!(set.len(), 1);
@@ -193,9 +193,9 @@ impl<T: Bytes> GenericRadixSet<T> {
     /// # Examples
     ///
     /// ```
-    /// use fast_radix_tree::PatriciaSet;
+    /// use fast_radix_tree::RadixSet;
     ///
-    /// let mut set = PatriciaSet::new();
+    /// let mut set = RadixSet::new();
     /// set.insert("foo");
     /// assert_eq!(set.remove("foo"), true);
     /// assert_eq!(set.remove("foo"), false);
@@ -211,9 +211,9 @@ impl<T: Bytes> GenericRadixSet<T> {
     /// # Examples
     ///
     /// ```
-    /// use fast_radix_tree::PatriciaSet;
+    /// use fast_radix_tree::RadixSet;
     ///
-    /// let mut a = PatriciaSet::new();
+    /// let mut a = RadixSet::new();
     /// a.insert("rust");
     /// a.insert("ruby");
     /// a.insert("python");
@@ -235,9 +235,9 @@ impl<T: Bytes> GenericRadixSet<T> {
     /// # Examples
     ///
     /// ```
-    /// use fast_radix_tree::PatriciaSet;
+    /// use fast_radix_tree::RadixSet;
     ///
-    /// let mut set = PatriciaSet::new();
+    /// let mut set = RadixSet::new();
     /// set.insert("foo");
     /// set.insert("bar");
     /// set.insert("baz");
@@ -255,9 +255,9 @@ impl<T: Bytes> GenericRadixSet<T> {
     /// # Examples
     ///
     /// ```
-    /// use fast_radix_tree::PatriciaSet;
+    /// use fast_radix_tree::RadixSet;
     ///
-    /// let mut set = PatriciaSet::new();
+    /// let mut set = RadixSet::new();
     /// set.insert("foo");
     /// set.insert("bar");
     /// set.insert("baz");
@@ -325,7 +325,7 @@ impl<T: Bytes, U: AsRef<T::Borrowed>> Extend<U> for GenericRadixSet<T> {
     }
 }
 
-/// An Iterator over a `PatriciaSet`'s items.
+/// An Iterator over a `RadixSet`'s items.
 #[derive(Debug)]
 pub struct Iter<'a, T>(map::Keys<'a, T, ()>);
 impl<T: Bytes> Iterator for Iter<'_, T> {
@@ -335,7 +335,7 @@ impl<T: Bytes> Iterator for Iter<'_, T> {
     }
 }
 
-/// An owning iterator over a `PatriciaSet`'s items.
+/// An owning iterator over a `RadixSet`'s items.
 #[derive(Debug)]
 pub struct IntoIter<T>(map::IntoIter<T, ()>);
 impl<T: Bytes> Iterator for IntoIter<T> {
@@ -351,7 +351,7 @@ mod tests {
 
     // #[test]
     // fn debug_works() {
-    //     let set: PatriciaSet = vec!["foo", "bar", "baz"].into_iter().collect();
+    //     let set: RadixSet = vec!["foo", "bar", "baz"].into_iter().collect();
     //     assert_eq!(
     //         format!("{set:?}"),
     //         "{[98, 97, 114], [98, 97, 122], [102, 111, 111]}"

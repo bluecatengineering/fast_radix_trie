@@ -65,6 +65,7 @@ impl<V> NodePtrAndData<V> {
         unsafe { self.ptr_data.children_ptr(self.ptr) }
     }
 
+    #[allow(dead_code)]
     #[inline]
     pub(crate) unsafe fn value_ptr(&self) -> NonNull<Option<V>> {
         unsafe { self.ptr_data.value_ptr(self.ptr) }
