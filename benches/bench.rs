@@ -10,7 +10,7 @@ use std::{
 fn bench_longest_common_prefix(c: &mut Criterion) {
     let mut group = c.benchmark_group("longest_common_prefix");
 
-    group.bench_function("LCP by 8 bytes", |b| {
+    group.bench_function("LCP by 4 bytes", |b| {
         b.iter(|| {
             fast_radix_tree::longest_common_prefix(
                 black_box(b"abcdefghijklmnopqrstuvwxyz123"),

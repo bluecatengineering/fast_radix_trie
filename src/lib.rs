@@ -24,7 +24,6 @@
 //! ```
 #![warn(missing_docs)]
 #![cfg_attr(not(any(feature = "std", test)), no_std)]
-// #![cfg_attr(not(test), no_std)]
 
 #[macro_use]
 extern crate alloc;
@@ -175,7 +174,7 @@ pub fn longest_common_prefix(a: &[u8], b: &[u8]) -> (usize, Option<Ordering>) {
         }
         i += CHUNK;
     }
-    // process remaining bytes less than 8 - one at a time
+    // process remaining bytes less than 4 - one at a time
     while i < min_len {
         if a[i] != b[i] {
             return (i, Some(a[i].cmp(&b[i])));
