@@ -19,6 +19,7 @@ rust-version = "1.85.0"
 memchr = { version = "2", default-features = false }
 
 [dev-dependencies]
+patricia_tree = "0.10.1"
 criterion = "0.7.0"
 noargs = "0.4.1"
 rand = "0.9"

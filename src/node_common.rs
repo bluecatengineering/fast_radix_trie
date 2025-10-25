@@ -1604,6 +1604,8 @@ mod tests {
         let mut root = create_bigger_test_tree();
         // dbg!(&root);
         let other = root.split_by_prefix("ap").unwrap();
+        dbg!(&root);
+        dbg!(&other);
         assert_eq!(other.value(), None);
         assert_eq!(other.label(), b"appl");
         assert_eq!(other.children_len(), 2);

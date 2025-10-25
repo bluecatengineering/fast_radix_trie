@@ -1,5 +1,6 @@
 use criterion::{BatchSize, Criterion, criterion_group, criterion_main};
 use fast_radix_tree::RadixSet;
+use patricia_tree::PatriciaSet;
 use rand::{Rng, seq::IndexedRandom};
 
 use std::{
@@ -42,6 +43,14 @@ fn bench_insertion(c: &mut Criterion) {
         })
     });
 
+    group.bench_function("PatriciaSet", |b| {
+        let mut set = PatriciaSet::new();
+        let mut rng = rand::rng();
+        b.iter(|| {
+            set.insert(black_box(rng.random::<u64>().to_string()));
+        })
+    });
+
     group.bench_function("HashSet", |b| {
         let mut set = HashSet::new();
         let mut rng = rand::rng();
@@ -78,6 +87,18 @@ fn bench_retrieval(c: &mut Criterion) {
         })
     });
 
+    let mut set = PatriciaSet::new();
+    // Pre-populate the set
+    for _ in 0..MAX / 2 {
+        set.insert((rng.random::<u64>() % MAX).to_string());
+    }
+
+    group.bench_function("PatriciaSet", |b| {
+        b.iter(|| {
+            set.contains(black_box((rng.random::<u64>() % MAX).to_string()));
+        })
+    });
+
     let mut hash_set = HashSet::new();
     for _ in 0..MAX / 2 {
         hash_set.insert((rng.random::<u64>() % MAX).to_string());
@@ -108,16 +129,32 @@ fn bench_removal(c: &mut Criterion) {
     for i in 0..MAX {
         values.push(i.to_string());
     }
-    let patricia_set: RadixSet = values.iter().cloned().collect();
+    let radix_set: RadixSet = values.iter().cloned().collect();
     let hashset: HashSet<String> = values.iter().cloned().collect();
     let btreeset: BTreeSet<String> = values.iter().cloned().collect();
+    let pat_set: PatriciaSet = values.iter().cloned().collect();
 
     group.bench_function("RadixSet", |b| {
         b.iter_batched_ref(
             // setup
             || {
                 let val = values.choose(&mut rand::rng()).unwrap().clone();
-                (patricia_set.clone(), val.clone())
+                (radix_set.clone(), val.clone())
+            },
+            // time removal
+            |(set, val)| {
+                set.remove(black_box(val));
+            },
+            BatchSize::SmallInput,
+        )
+    });
+
+    group.bench_function("PatriciaSet", |b| {
+        b.iter_batched_ref(
+            // setup
+            || {
+                let val = values.choose(&mut rand::rng()).unwrap().clone();
+                (pat_set.clone(), val.clone())
             },
             // time removal
             |(set, val)| {
