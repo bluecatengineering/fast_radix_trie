@@ -349,15 +349,6 @@ impl<T: Bytes> Iterator for IntoIter<T> {
 mod tests {
     use super::*;
 
-    // #[test]
-    // fn debug_works() {
-    //     let set: RadixSet = vec!["foo", "bar", "baz"].into_iter().collect();
-    //     assert_eq!(
-    //         format!("{set:?}"),
-    //         "{[98, 97, 114], [98, 97, 122], [102, 111, 111]}"
-    //     );
-    // }
-
     #[test]
     fn clear_works() {
         let mut set = RadixSet::new();
