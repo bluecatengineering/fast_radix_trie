@@ -1,7 +1,5 @@
 # fast_radix_tree
 
-================
-
 [![fast_radix_tree](https://img.shields.io/crates/v/fast_radix_tree.svg)](https://crates.io/crates/fast_radix_tree)
 [![Documentation](https://docs.rs/fast_radix_tree/badge.svg)](https://docs.rs/fast_radix_tree)
 [![Actions Status](https://github.com/bluecatengineering/fast_radix_tree/workflows/CI/badge.svg)](https://github.com/bluecatengineering/fast_radix_tree/actions)
