@@ -1,7 +1,7 @@
 //! A node which represents a subtree of a patricia tree.
 use crate::{
     node_alloc::node_header::{Flags, NodeHeader, NodePtrAndData},
-    node_common::{NodeMut, assert_some},
+    node_common::{NodeMut, some},
 };
 use core::{
     marker::PhantomData,
@@ -271,7 +271,7 @@ impl<V> Node<V> {
 
         unsafe {
             // get child at i
-            let removed_child = assert_some!(old_ptr.children_ptr()).add(i).read();
+            let removed_child = some!(old_ptr.children_ptr()).add(i).read();
 
             // write header/label
             new_ptr.write_header(new_header);
@@ -382,8 +382,8 @@ impl<V> Node<V> {
             ptr.write_header(child_hdr);
             ptr.write_label(suffix);
             if old_children_len > 0 {
-                let dst_children = assert_some!(ptr.children_ptr());
-                let src_children = assert_some!(self.ptr_data().children_ptr(self.ptr));
+                let dst_children = some!(ptr.children_ptr());
+                let src_children = some!(self.ptr_data().children_ptr(self.ptr));
                 dst_children
                     .copy_from_nonoverlapping(src_children, child_hdr.children_len as usize);
             }
@@ -406,8 +406,8 @@ impl<V> Node<V> {
             new_ptr.write_label(self.label().get_unchecked(..position));
             if let Some(new_child) = new_child {
                 let children = {
-                    let suffix_first = assert_some!(child.label().first());
-                    let new_child_first = assert_some!(new_child.label().first());
+                    let suffix_first = some!(child.label().first());
+                    let new_child_first = some!(new_child.label().first());
                     if new_child_first < suffix_first {
                         [new_child, child]
                     } else {

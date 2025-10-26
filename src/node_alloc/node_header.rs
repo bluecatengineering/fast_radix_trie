@@ -138,7 +138,6 @@ impl<V> NodePtrAndData<V> {
         }
     }
 
-    // TODO
     #[allow(unused)]
     #[inline]
     pub(crate) fn into_parts(self) -> (NonNull<NodeHeader>, PtrData<V>) {

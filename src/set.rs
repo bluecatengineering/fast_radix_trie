@@ -380,9 +380,15 @@ mod tests {
     #[test]
     fn split_by_prefix_works() {
         let mut set: RadixSet = vec!["foo", "bar", "baz"].into_iter().collect();
+
         let splitted_set = set.split_by_prefix("f");
         assert_eq!(set.iter().collect::<Vec<_>>(), [b"bar", b"baz"]);
         assert_eq!(splitted_set.iter().collect::<Vec<_>>(), [b"foo"]);
+
+        let mut set: RadixSet = vec!["foo", "bar", "baz"].into_iter().collect();
+        let splitted_set = set.split_by_prefix("bax");
+        assert_eq!(set.iter().collect::<Vec<_>>(), [b"bar", b"baz", b"foo"]);
+        assert!(splitted_set.iter().collect::<Vec<_>>().is_empty());
 
         let mut set: RadixSet = vec!["foo", "bar", "baz"].into_iter().collect();
         let splitted_set = set.split_by_prefix("fo");
@@ -436,12 +442,14 @@ mod tests {
     #[test]
     fn iter_prefix_works() {
         fn assert_iter_prefix(set: &RadixSet, prefix: &str) {
+            dbg!(prefix);
             let actual = set.iter_prefix(prefix.as_bytes()).collect::<Vec<_>>();
             dbg!(&actual);
             let expected = set
                 .iter()
                 .filter(|key| key.starts_with(prefix.as_bytes()))
                 .collect::<Vec<_>>();
+            dbg!(&expected);
             assert_eq!(actual, expected);
         }
 

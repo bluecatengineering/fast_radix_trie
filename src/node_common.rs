@@ -3,12 +3,11 @@ use crate::{BorrowedBytes, Bytes, Node, NodeHeader, NodePtrAndData, PtrData};
 use alloc::{collections::VecDeque, string::String, vec::Vec};
 use core::{cmp::Ordering, fmt, marker::PhantomData, mem};
 
-macro_rules! assert_some {
+macro_rules! some {
     ($expr:expr) => {
         match $expr {
             Some(value) => value,
-            // TODO: change to unreachable?
-            None => panic!("`{}` must be `Some(..)`", stringify!($expr)),
+            None => unreachable!("`{}` must be `Some(..)`", stringify!($expr)),
         }
     };
 }
@@ -22,7 +21,7 @@ macro_rules! extend {
     }};
 }
 
-pub(crate) use {assert_some, extend};
+pub(crate) use {extend, some};
 
 pub const MAX_LABEL_LEN: usize = u8::MAX as usize;
 
@@ -60,18 +59,20 @@ impl<V> Node<V> {
     }
 
     /// get all children for node as slice
+    #[inline]
     pub fn children(&self) -> &[Node<V>] {
         unsafe { self.ptr_data().children(self.ptr) }
     }
     /// get all children for node as mut slice
-    pub fn children_mut(&mut self) -> &mut [Node<V>] {
+    #[inline]
+    pub(crate) fn children_mut(&mut self) -> &mut [Node<V>] {
         unsafe { self.ptr_data().children_mut(self.ptr) }
     }
     /// return the first byte of each childs label
+    #[inline]
     pub(crate) fn children_first_bytes(
         &self,
     ) -> impl DoubleEndedIterator<Item = u8> + ExactSizeIterator {
-        // TODO: consider storing first bytes in node? trade memory for lookup speed
         self.children()
             .iter()
             .map(|n| *n.label().first().expect("child nodes must have label"))
@@ -162,7 +163,6 @@ impl<V> Node<V> {
     }
 
     pub(crate) fn child_with_first(&self, byte: u8) -> Option<&Self> {
-        // TODO: child methods could use binary search?
         let i = self.child_index_with_first(byte)?;
         // SAFETY: we know i is inside the bounds already
         Some(unsafe { self.children().get_unchecked(i) })
@@ -204,23 +204,27 @@ impl<V> Node<V> {
         &self,
         key: &K,
     ) -> Option<(usize, &Self)> {
-        // let mut cur = self;
-        // let mut key = key.as_bytes();
+        // TODO: benchmark version with longest_common_prefix
         // loop {
         //     // strip label prefix off key
         //     let (offset, _) = crate::longest_common_prefix(key, cur.label());
         //     key = &key[offset..];
 
-        //     // if offset != cur.label_len() {
-        //     //     return None;
-        //     // }
-
         //     match key.first() {
-        //         // end of the line-- got an exact match
+        //         // end of the line
         //         None => return Some((offset, cur)),
         //         Some(first) => {
-        //             // find child or return None
-        //             cur = cur.child_with_first(*first)?;
+        //             // find child
+        //             let Some(next) = cur.child_with_first(*first) else {
+        //                 // is key is a prefix of current label then return
+        //                 if crate::strip_prefix(cur.label(), key).is_some() {
+        //                     return Some((offset, cur));
+        //                 } else {
+        //                     // no child exists and we're not at a partial prefix
+        //                     return None;
+        //                 }
+        //             };
+        //             cur = next;
         //         }
         //     }
         // }
@@ -252,30 +256,10 @@ impl<V> Node<V> {
 
     /// will get mutable node based on prefix, so partial matches are allowed. i.e. if a node was inserted for "apples"
     /// get_prefix_node_mut("ap") will retrieve the node
-    #[inline]
     pub(crate) fn get_prefix_node_mut<K: ?Sized + BorrowedBytes>(
         &mut self,
         key: &K,
     ) -> Option<(usize, &mut Self)> {
-        // let mut cur = self;
-        // let mut key = key.as_bytes();
-        // loop {
-        //     // get common offset point where labels differ
-        //     let (offset, _) = crate::longest_common_prefix(key, cur.label());
-        //     key = &key[offset..];
-        //     // if offset != cur.label_len() {
-        //     //     return None;
-        //     // }
-
-        //     match key.first() {
-        //         // end of the line-- got an exact match
-        //         None => return Some((offset, cur)),
-        //         Some(first) => {
-        //             // find child or return None
-        //             cur = cur.child_with_first_mut(*first)?;
-        //         }
-        //     }
-        // }
         let mut cur = self;
         let mut key = key.as_bytes();
         loop {
@@ -302,7 +286,7 @@ impl<V> Node<V> {
         }
     }
 
-    #[inline]
+    /// descend the node with the key and get a mutable reference to the matching element
     pub(crate) fn get_node_mut<K: ?Sized + BorrowedBytes>(&mut self, key: &K) -> Option<&mut Self> {
         let mut cur = self;
         let mut key = key.as_bytes();
@@ -317,18 +301,27 @@ impl<V> Node<V> {
         }
     }
 
-    pub(crate) fn split_by_prefix<K: ?Sized + BorrowedBytes>(&mut self, key: &K) -> Option<Self> {
+    /// split the node by the prefix into two distinct nodes
+    pub fn split_by_prefix<K: ?Sized + BorrowedBytes>(&mut self, key: &K) -> Option<Self> {
         let mut cur = self;
         let key = key.as_bytes();
         let mut suffix = key;
         let mut parent: *mut Node<V> = &raw mut *cur;
+        // descend as we would for `get_prefix_node` but keep the parent ptr to lag behind `cur`
         loop {
-            // TODO: write using longest_common_prefix?
             let Some(key_suffix) = crate::strip_prefix(suffix, cur.label()) else {
-                break;
+                // see if the suffix is in the label. i.e. suffix: "ba" in "bar"
+                // meaning we'll split on "ba"
+                if crate::strip_prefix(cur.label(), suffix).is_some() {
+                    break;
+                } else {
+                    // key doesn't partially match label, so return None
+                    return None;
+                }
             };
             suffix = key_suffix;
-            match key_suffix.first() {
+            match suffix.first() {
+                // no more key to traverse
                 None => break,
                 Some(first) => {
                     parent = &raw mut *cur;
@@ -415,7 +408,6 @@ impl<V> Node<V> {
         let mut last_match = None;
 
         loop {
-            // TODO: write with crate::longest_common_prefix?
             let Some(remaining) = crate::strip_prefix(key, cur.label()) else {
                 return last_match;
             };
@@ -516,7 +508,7 @@ impl<V> Node<V> {
         };
         // SAFETY:
         // - we know there is exactly 1 child
-        let mut child: Node<V> = unsafe { assert_some!(old_parent.children_ptr()).read() };
+        let mut child: Node<V> = unsafe { some!(old_parent.children_ptr()).read() };
         // merge child label
         child.prefix_label(self.label());
         // SAFETY:
@@ -590,12 +582,12 @@ impl<V> Node<V> {
                                     continue;
                                 }
                                 None => {
-                                    // TODO: use binary_search(first_byte).unwrap_err()
-                                    // if we switch to storing first bytes
+                                    // could use binary_search(first_byte).unwrap_err() if we store
+                                    // first bytes inline or allocate
                                     let insert_index = cur
                                         .children_first_bytes()
                                         .enumerate()
-                                        // TODO: is this right? >= or > ?
+                                        // TODO: >= or > ?
                                         .find(|(_, b)| *b >= first_byte)
                                         .map(|(i, _)| i)
                                         .unwrap_or(cur.children_len());
@@ -1665,13 +1657,57 @@ mod tests {
         assert_eq!(root.get_prefix_node("b0"), None);
         assert_eq!(root.get_prefix_node("a0").unwrap().1.value().unwrap(), &1);
         assert_eq!(root.get_prefix_node("a0").unwrap().0, 1);
-        assert_eq!(dbg!(root.get_prefix_node("a0/b1")), None);
+        assert_eq!(root.get_prefix_node("a0/b1"), None);
         assert_eq!(root.get_prefix_node("a1/").unwrap().1.value().unwrap(), &2);
         assert_eq!(root.get_prefix_node("a1/").unwrap().0, 2);
         assert_eq!(root.get_prefix_node("a1/b").unwrap().1.value().unwrap(), &2);
         assert_eq!(root.get_prefix_node("a1/b").unwrap().0, 3);
         assert_eq!(root.get_prefix_node("a1/b2"), None);
+
+        let mut root = Node::root();
+        root.insert("foo", 1);
+        root.insert("bar", 2);
+        root.insert("baz", 3);
+        assert_eq!(root.get_prefix_node("bax"), None);
     }
+
+    #[test]
+    fn test_issue42_split_by() {
+        let create = || {
+            let mut root = Node::root();
+            root.insert("a0/b0", 1);
+            root.insert("a1/b1", 2);
+            root
+        };
+        // dbg!(&root);
+        let mut root = create();
+        assert_eq!(root.split_by_prefix("b"), None);
+        let mut root = create();
+        assert_eq!(root.split_by_prefix("b0"), None);
+
+        let mut root = create();
+        assert_eq!(root.split_by_prefix("a0").unwrap().value().unwrap(), &1);
+
+        let mut root = create();
+        assert_eq!(root.split_by_prefix("a0/b1"), None);
+
+        let mut root = create();
+        assert_eq!(root.split_by_prefix("a1/").unwrap().value().unwrap(), &2);
+        let mut root = create();
+        assert_eq!(root.split_by_prefix("a1/b").unwrap().value().unwrap(), &2);
+        let mut root = create();
+        assert_eq!(root.split_by_prefix("a1/b2"), None);
+
+        let mut root = Node::root();
+        root.insert("foo", 1);
+        root.insert("bar", 2);
+        root.insert("baz", 3);
+        assert_eq!(root.split_by_prefix("bax"), None);
+        assert_eq!(root.split_by_prefix("baxx"), None);
+        assert_eq!(root.split_by_prefix("x"), None);
+        assert_eq!(root.split_by_prefix("f").unwrap().value().unwrap(), &1);
+    }
+
     #[test]
     fn get_longest_common_prefix_works() {
         let set = ["123", "123456", "1234_67", "123abc", "123def"]
