@@ -237,9 +237,6 @@ impl<V> Iterator for IntoNodes<V> {
 mod tests {
     use super::*;
 
-    // this test is copied from the old library, there is an important
-    // difference in how the new code handles the root node.
-    // it's not recommended to insert/remove values at ""
     #[test]
     fn it_works() {
         let mut tree = RadixTree::new();
