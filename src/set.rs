@@ -442,14 +442,11 @@ mod tests {
     #[test]
     fn iter_prefix_works() {
         fn assert_iter_prefix(set: &RadixSet, prefix: &str) {
-            dbg!(prefix);
             let actual = set.iter_prefix(prefix.as_bytes()).collect::<Vec<_>>();
-            dbg!(&actual);
             let expected = set
                 .iter()
                 .filter(|key| key.starts_with(prefix.as_bytes()))
                 .collect::<Vec<_>>();
-            dbg!(&expected);
             assert_eq!(actual, expected);
         }
 
@@ -461,35 +458,35 @@ mod tests {
             assert_iter_prefix(&set, prefix);
         }
 
-        // let set: RadixSet = vec![
-        //     "JavaScript",
-        //     "Python",
-        //     "Java",
-        //     "C++",
-        //     "Swift",
-        //     "TypeScript",
-        //     "Go",
-        //     "SQL",
-        //     "Ruby",
-        //     "R",
-        //     "PHP",
-        //     "Perl",
-        //     "Kotlin",
-        //     "C#",
-        //     "Rust",
-        //     "Scheme",
-        //     "Erlang",
-        //     "Scala",
-        //     "Elixir",
-        //     "Haskell",
-        // ]
-        // .into_iter()
-        // .collect();
-        // let prefixes = [
-        //     "", "P", "Py", "J", "Jav", "Java", "JavaS", "Rusti", "E", "El", "H", "S", "Sc",
-        // ];
-        // for prefix in &prefixes {
-        //     assert_iter_prefix(&set, prefix);
-        // }
+        let set: RadixSet = vec![
+            "JavaScript",
+            "Python",
+            "Java",
+            "C++",
+            "Swift",
+            "TypeScript",
+            "Go",
+            "SQL",
+            "Ruby",
+            "R",
+            "PHP",
+            "Perl",
+            "Kotlin",
+            "C#",
+            "Rust",
+            "Scheme",
+            "Erlang",
+            "Scala",
+            "Elixir",
+            "Haskell",
+        ]
+        .into_iter()
+        .collect();
+        let prefixes = [
+            "", "P", "Py", "J", "Jav", "Java", "JavaS", "Rusti", "E", "El", "H", "S", "Sc",
+        ];
+        for prefix in &prefixes {
+            assert_iter_prefix(&set, prefix);
+        }
     }
 }
