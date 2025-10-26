@@ -1,37 +1,35 @@
 //! A set based on a patricia tree.
 use crate::Bytes;
-use crate::map::{self, GenericPatriciaMap};
-#[cfg(any(feature = "serde", test))]
-use crate::node::Node;
+use crate::map::{self, GenericRadixMap};
 use alloc::string::String;
 use alloc::vec::Vec;
-use core::fmt;
 use core::iter::FromIterator;
 
 /// Patricia tree based set with [`Vec<u8>`] as key.
-pub type PatriciaSet = GenericPatriciaSet<Vec<u8>>;
+pub type RadixSet = GenericRadixSet<Vec<u8>>;
 
 /// Patricia tree based set with [`String`] as key.
-pub type StringPatriciaSet = GenericPatriciaSet<String>;
+pub type StringRadixSet = GenericRadixSet<String>;
 
-/// Patricia tree based set.
-pub struct GenericPatriciaSet<T> {
-    map: GenericPatriciaMap<T, ()>,
+/// Radix tree based set.
+#[derive(Debug)]
+pub struct GenericRadixSet<T> {
+    map: GenericRadixMap<T, ()>,
 }
-impl<T> GenericPatriciaSet<T> {
-    /// Makes a new empty [`GenericPatriciaSet`] instance.
+impl<T> GenericRadixSet<T> {
+    /// Makes a new empty [`GenericRadixSet`] instance.
     ///
     /// # Examples
     ///
     /// ```
-    /// use patricia_tree::PatriciaSet;
+    /// use fast_radix_tree::RadixSet;
     ///
-    /// let set = PatriciaSet::new();
+    /// let set = RadixSet::new();
     /// assert!(set.is_empty());
     /// ```
     pub fn new() -> Self {
-        GenericPatriciaSet {
-            map: GenericPatriciaMap::new(),
+        GenericRadixSet {
+            map: GenericRadixMap::new(),
         }
     }
 
@@ -40,9 +38,9 @@ impl<T> GenericPatriciaSet<T> {
     /// # Examples
     ///
     /// ```
-    /// use patricia_tree::PatriciaSet;
+    /// use fast_radix_tree::RadixSet;
     ///
-    /// let mut set = PatriciaSet::new();
+    /// let mut set = RadixSet::new();
     /// set.insert("foo");
     /// set.insert("bar");
     /// assert_eq!(set.len(), 2);
@@ -56,9 +54,9 @@ impl<T> GenericPatriciaSet<T> {
     /// # Examples
     ///
     /// ```
-    /// use patricia_tree::PatriciaSet;
+    /// use fast_radix_tree::RadixSet;
     ///
-    /// let mut set = PatriciaSet::new();
+    /// let mut set = RadixSet::new();
     /// assert!(set.is_empty());
     ///
     /// set.insert("foo");
@@ -76,9 +74,9 @@ impl<T> GenericPatriciaSet<T> {
     /// # Examples
     ///
     /// ```
-    /// use patricia_tree::PatriciaSet;
+    /// use fast_radix_tree::RadixSet;
     ///
-    /// let mut set = PatriciaSet::new();
+    /// let mut set = RadixSet::new();
     /// set.insert("foo");
     /// set.clear();
     /// assert!(set.is_empty());
@@ -87,32 +85,32 @@ impl<T> GenericPatriciaSet<T> {
         self.map.clear();
     }
 
-    #[cfg(feature = "serde")]
-    pub(crate) fn from_node(node: Node<()>) -> Self {
+    /// create map from node (NOTE: calling methods on node directly seriously mess up your tree)
+    pub fn from_node(node: crate::Node<()>) -> Self {
         Self {
-            map: GenericPatriciaMap::from_node(node),
+            map: GenericRadixMap::from_node(node),
         }
     }
 
-    #[cfg(any(test, feature = "serde"))]
-    pub(crate) fn as_node(&self) -> &Node<()> {
+    /// get ref to root node  (NOTE: calling methods on node directly seriously mess up your tree)
+    pub fn as_node(&self) -> &crate::Node<()> {
         self.map.as_node()
     }
 
-    #[cfg(test)]
-    pub(crate) fn into_node(self) -> Node<()> {
+    /// get root node out of map (NOTE: calling methods on node directly seriously mess up your tree)
+    pub fn into_node(self) -> crate::Node<()> {
         self.map.into_node()
     }
 }
-impl<T: Bytes> GenericPatriciaSet<T> {
+impl<T: Bytes> GenericRadixSet<T> {
     /// Returns `true` if this set contains a value.
     ///
     /// # Examples
     ///
     /// ```
-    /// use patricia_tree::PatriciaSet;
+    /// use fast_radix_tree::RadixSet;
     ///
-    /// let mut set = PatriciaSet::new();
+    /// let mut set = RadixSet::new();
     /// set.insert("foo");
     /// assert!(set.contains("foo"));
     /// assert!(!set.contains("bar"));
@@ -126,9 +124,9 @@ impl<T: Bytes> GenericPatriciaSet<T> {
     /// # Examples
     ///
     /// ```
-    /// use patricia_tree::PatriciaSet;
+    /// use fast_radix_tree::RadixSet;
     ///
-    /// let mut set = PatriciaSet::new();
+    /// let mut set = RadixSet::new();
     ///
     /// set.insert("foo");
     /// set.insert("foobar");
@@ -152,9 +150,9 @@ impl<T: Bytes> GenericPatriciaSet<T> {
     /// # Examples
     ///
     /// ```
-    /// use patricia_tree::PatriciaSet;
+    /// use fast_radix_tree::RadixSet;
     ///
-    /// let mut set = PatriciaSet::new();
+    /// let mut set = RadixSet::new();
     /// set.insert("foo");
     /// set.insert("foobar");
     /// assert_eq!(set.longest_common_prefix_len("fo"), 2);
@@ -179,9 +177,9 @@ impl<T: Bytes> GenericPatriciaSet<T> {
     /// # Examples
     ///
     /// ```
-    /// use patricia_tree::PatriciaSet;
+    /// use fast_radix_tree::RadixSet;
     ///
-    /// let mut set = PatriciaSet::new();
+    /// let mut set = RadixSet::new();
     /// assert!(set.insert("foo"));
     /// assert!(!set.insert("foo"));
     /// assert_eq!(set.len(), 1);
@@ -195,9 +193,9 @@ impl<T: Bytes> GenericPatriciaSet<T> {
     /// # Examples
     ///
     /// ```
-    /// use patricia_tree::PatriciaSet;
+    /// use fast_radix_tree::RadixSet;
     ///
-    /// let mut set = PatriciaSet::new();
+    /// let mut set = RadixSet::new();
     /// set.insert("foo");
     /// assert_eq!(set.remove("foo"), true);
     /// assert_eq!(set.remove("foo"), false);
@@ -213,9 +211,9 @@ impl<T: Bytes> GenericPatriciaSet<T> {
     /// # Examples
     ///
     /// ```
-    /// use patricia_tree::PatriciaSet;
+    /// use fast_radix_tree::RadixSet;
     ///
-    /// let mut a = PatriciaSet::new();
+    /// let mut a = RadixSet::new();
     /// a.insert("rust");
     /// a.insert("ruby");
     /// a.insert("python");
@@ -227,7 +225,7 @@ impl<T: Bytes> GenericPatriciaSet<T> {
     /// assert_eq!(b.iter().collect::<Vec<_>>(), [b"ruby", b"rust"]);
     /// ```
     pub fn split_by_prefix<U: AsRef<T::Borrowed>>(&mut self, prefix: U) -> Self {
-        GenericPatriciaSet {
+        GenericRadixSet {
             map: self.map.split_by_prefix(prefix),
         }
     }
@@ -237,9 +235,9 @@ impl<T: Bytes> GenericPatriciaSet<T> {
     /// # Examples
     ///
     /// ```
-    /// use patricia_tree::PatriciaSet;
+    /// use fast_radix_tree::RadixSet;
     ///
-    /// let mut set = PatriciaSet::new();
+    /// let mut set = RadixSet::new();
     /// set.insert("foo");
     /// set.insert("bar");
     /// set.insert("baz");
@@ -250,15 +248,16 @@ impl<T: Bytes> GenericPatriciaSet<T> {
         Iter(self.map.keys())
     }
 }
-impl<T: Bytes> GenericPatriciaSet<T> {
+
+impl<T: Bytes> GenericRadixSet<T> {
     /// Gets an iterator over the contents having the given prefix of this set, in sorted order.
     ///
     /// # Examples
     ///
     /// ```
-    /// use patricia_tree::PatriciaSet;
+    /// use fast_radix_tree::RadixSet;
     ///
-    /// let mut set = PatriciaSet::new();
+    /// let mut set = RadixSet::new();
     /// set.insert("foo");
     /// set.insert("bar");
     /// set.insert("baz");
@@ -272,43 +271,50 @@ impl<T: Bytes> GenericPatriciaSet<T> {
         self.map.iter_prefix(prefix).map(|(k, _)| k)
     }
 }
-impl<T: Bytes + fmt::Debug> fmt::Debug for GenericPatriciaSet<T> {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        f.debug_set().entries(self.iter()).finish()
-    }
-}
-impl<T> Clone for GenericPatriciaSet<T> {
+
+// impl<T: Bytes + fmt::Debug> fmt::Debug for GenericRadixSet<T> {
+//     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+//         f.debug_struct("RadixSet")
+//             .field("root", &self.as_node())
+//             .finish()
+//     }
+// }
+
+impl<T> Clone for GenericRadixSet<T> {
     fn clone(&self) -> Self {
-        GenericPatriciaSet {
+        GenericRadixSet {
             map: self.map.clone(),
         }
     }
 }
-impl<T> Default for GenericPatriciaSet<T> {
+impl<T> Default for GenericRadixSet<T> {
     fn default() -> Self {
-        GenericPatriciaSet::new()
+        GenericRadixSet::new()
     }
 }
-impl<T: Bytes> IntoIterator for GenericPatriciaSet<T> {
+
+impl<T: Bytes> IntoIterator for GenericRadixSet<T> {
     type Item = T;
     type IntoIter = IntoIter<T>;
     fn into_iter(self) -> Self::IntoIter {
         IntoIter(self.map.into_iter())
     }
 }
-impl<T: Bytes, U: AsRef<T::Borrowed>> FromIterator<U> for GenericPatriciaSet<T> {
+
+impl<T: Bytes, U: AsRef<T::Borrowed>> FromIterator<U> for GenericRadixSet<T> {
     fn from_iter<I>(iter: I) -> Self
     where
         I: IntoIterator<Item = U>,
     {
-        let mut set = GenericPatriciaSet::new();
+        let mut set = GenericRadixSet::new();
         for t in iter {
             set.insert(t);
         }
         set
     }
 }
-impl<T: Bytes, U: AsRef<T::Borrowed>> Extend<U> for GenericPatriciaSet<T> {
+
+impl<T: Bytes, U: AsRef<T::Borrowed>> Extend<U> for GenericRadixSet<T> {
     fn extend<I>(&mut self, iter: I)
     where
         I: IntoIterator<Item = U>,
@@ -319,7 +325,7 @@ impl<T: Bytes, U: AsRef<T::Borrowed>> Extend<U> for GenericPatriciaSet<T> {
     }
 }
 
-/// An Iterator over a `PatriciaSet`'s items.
+/// An Iterator over a `RadixSet`'s items.
 #[derive(Debug)]
 pub struct Iter<'a, T>(map::Keys<'a, T, ()>);
 impl<T: Bytes> Iterator for Iter<'_, T> {
@@ -329,7 +335,7 @@ impl<T: Bytes> Iterator for Iter<'_, T> {
     }
 }
 
-/// An owning iterator over a `PatriciaSet`'s items.
+/// An owning iterator over a `RadixSet`'s items.
 #[derive(Debug)]
 pub struct IntoIter<T>(map::IntoIter<T, ()>);
 impl<T: Bytes> Iterator for IntoIter<T> {
@@ -344,17 +350,8 @@ mod tests {
     use super::*;
 
     #[test]
-    fn debug_works() {
-        let set: PatriciaSet = vec!["foo", "bar", "baz"].into_iter().collect();
-        assert_eq!(
-            format!("{set:?}"),
-            "{[98, 97, 114], [98, 97, 122], [102, 111, 111]}"
-        );
-    }
-
-    #[test]
     fn clear_works() {
-        let mut set = PatriciaSet::new();
+        let mut set = RadixSet::new();
         set.insert("foo");
         assert!(!set.is_empty());
 
@@ -364,7 +361,7 @@ mod tests {
 
     #[test]
     fn into_iter_works() {
-        let set: PatriciaSet = vec!["foo", "bar", "baz"].into_iter().collect();
+        let set: RadixSet = vec!["foo", "bar", "baz"].into_iter().collect();
         assert_eq!(
             set.into_iter().collect::<Vec<_>>(),
             [Vec::from("bar"), "baz".into(), "foo".into()]
@@ -373,45 +370,43 @@ mod tests {
 
     #[test]
     fn split_by_prefix_works() {
-        let mut set: PatriciaSet = vec!["foo", "bar", "baz"].into_iter().collect();
-        let splitted_set = set.split_by_prefix("");
-        assert!(set.is_empty());
-        assert_eq!(
-            splitted_set.iter().collect::<Vec<_>>(),
-            [b"bar", b"baz", b"foo"]
-        );
+        let mut set: RadixSet = vec!["foo", "bar", "baz"].into_iter().collect();
 
-        let mut set: PatriciaSet = vec!["foo", "bar", "baz"].into_iter().collect();
         let splitted_set = set.split_by_prefix("f");
         assert_eq!(set.iter().collect::<Vec<_>>(), [b"bar", b"baz"]);
         assert_eq!(splitted_set.iter().collect::<Vec<_>>(), [b"foo"]);
 
-        let mut set: PatriciaSet = vec!["foo", "bar", "baz"].into_iter().collect();
+        let mut set: RadixSet = vec!["foo", "bar", "baz"].into_iter().collect();
+        let splitted_set = set.split_by_prefix("bax");
+        assert_eq!(set.iter().collect::<Vec<_>>(), [b"bar", b"baz", b"foo"]);
+        assert!(splitted_set.iter().collect::<Vec<_>>().is_empty());
+
+        let mut set: RadixSet = vec!["foo", "bar", "baz"].into_iter().collect();
         let splitted_set = set.split_by_prefix("fo");
         assert_eq!(set.iter().collect::<Vec<_>>(), [b"bar", b"baz"]);
         assert_eq!(splitted_set.iter().collect::<Vec<_>>(), [b"foo"]);
 
-        let mut set: PatriciaSet = vec!["foo", "bar", "baz"].into_iter().collect();
+        let mut set: RadixSet = vec!["foo", "bar", "baz"].into_iter().collect();
         let splitted_set = set.split_by_prefix("foo");
         assert_eq!(set.iter().collect::<Vec<_>>(), [b"bar", b"baz"]);
         assert_eq!(splitted_set.iter().collect::<Vec<_>>(), [b"foo"]);
 
-        let mut set: PatriciaSet = vec!["foo", "bar", "baz"].into_iter().collect();
+        let mut set: RadixSet = vec!["foo", "bar", "baz"].into_iter().collect();
         let splitted_set = set.split_by_prefix("b");
         assert_eq!(set.iter().collect::<Vec<_>>(), [b"foo"]);
         assert_eq!(splitted_set.iter().collect::<Vec<_>>(), [b"bar", b"baz"]);
 
-        let mut set: PatriciaSet = vec!["foo", "bar", "baz"].into_iter().collect();
+        let mut set: RadixSet = vec!["foo", "bar", "baz"].into_iter().collect();
         let splitted_set = set.split_by_prefix("ba");
         assert_eq!(set.iter().collect::<Vec<_>>(), [b"foo"]);
         assert_eq!(splitted_set.iter().collect::<Vec<_>>(), [b"bar", b"baz"]);
 
-        let mut set: PatriciaSet = vec!["foo", "bar", "baz"].into_iter().collect();
+        let mut set: RadixSet = vec!["foo", "bar", "baz"].into_iter().collect();
         let splitted_set = set.split_by_prefix("bar");
         assert_eq!(set.iter().collect::<Vec<_>>(), [b"baz", b"foo"]);
         assert_eq!(splitted_set.iter().collect::<Vec<_>>(), [b"bar"]);
 
-        let mut set: PatriciaSet = vec!["foo", "bar", "baz"].into_iter().collect();
+        let mut set: RadixSet = vec!["foo", "bar", "baz"].into_iter().collect();
         let mut splitted_set = set.split_by_prefix("baz");
         assert_eq!(set.iter().collect::<Vec<_>>(), [b"bar", b"foo"]);
         assert_eq!(splitted_set.iter().collect::<Vec<_>>(), [b"baz"]);
@@ -419,17 +414,17 @@ mod tests {
         splitted_set.insert("aaa");
         assert_eq!(splitted_set.iter().collect::<Vec<_>>(), [b"aaa", b"baz"]);
 
-        let mut set: PatriciaSet = vec!["foo", "bar", "baz"].into_iter().collect();
+        let mut set: RadixSet = vec!["foo", "bar", "baz"].into_iter().collect();
         let splitted_set = set.split_by_prefix("bazz");
         assert_eq!(set.iter().collect::<Vec<_>>(), [b"bar", b"baz", b"foo"]);
         assert!(splitted_set.is_empty());
 
-        let mut set: PatriciaSet = vec!["foo", "bar", "baz"].into_iter().collect();
+        let mut set: RadixSet = vec!["foo", "bar", "baz"].into_iter().collect();
         let splitted_set = set.split_by_prefix("for");
         assert_eq!(set.iter().collect::<Vec<_>>(), [b"bar", b"baz", b"foo"]);
         assert!(splitted_set.is_empty());
 
-        let mut set: PatriciaSet = vec!["foo", "bar", "baz"].into_iter().collect();
+        let mut set: RadixSet = vec!["foo", "bar", "baz"].into_iter().collect();
         let splitted_set = set.split_by_prefix("qux");
         assert_eq!(set.iter().collect::<Vec<_>>(), [b"bar", b"baz", b"foo"]);
         assert!(splitted_set.is_empty());
@@ -437,7 +432,7 @@ mod tests {
 
     #[test]
     fn iter_prefix_works() {
-        fn assert_iter_prefix(set: &PatriciaSet, prefix: &str) {
+        fn assert_iter_prefix(set: &RadixSet, prefix: &str) {
             let actual = set.iter_prefix(prefix.as_bytes()).collect::<Vec<_>>();
             let expected = set
                 .iter()
@@ -446,7 +441,7 @@ mod tests {
             assert_eq!(actual, expected);
         }
 
-        let set: PatriciaSet = vec!["foo", "bar", "baz"].into_iter().collect();
+        let set: RadixSet = vec!["foo", "bar", "baz"].into_iter().collect();
         let prefixes = [
             "", "a", "b", "ba", "bar", "baz", "bax", "c", "f", "fo", "foo",
         ];
@@ -454,7 +449,7 @@ mod tests {
             assert_iter_prefix(&set, prefix);
         }
 
-        let set: PatriciaSet = vec![
+        let set: RadixSet = vec![
             "JavaScript",
             "Python",
             "Java",

@@ -1,29 +1,39 @@
+use core::fmt;
+
 use alloc::vec::Vec;
 
 use crate::{
     BorrowedBytes, Bytes,
-    node::{self, Node, NodeMut},
+    node::Node,
+    node_common::{self, NodeMut},
 };
 
-#[derive(Debug, Clone)]
-pub struct PatriciaTree<V> {
+#[derive(Clone)]
+pub struct RadixTree<V> {
     root: Node<V>,
     len: usize,
 }
 
-impl<V> PatriciaTree<V> {
+impl<V: fmt::Debug> fmt::Debug for RadixTree<V> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        f.debug_struct("RadixTree")
+            .field("root", &self.root)
+            .field("len", &self.len)
+            .finish()
+    }
+}
+
+impl<V> RadixTree<V> {
     pub fn new() -> Self {
-        PatriciaTree {
+        RadixTree {
             root: Node::root(),
             len: 0,
         }
     }
-    #[cfg(any(test, feature = "serde"))]
-    pub fn root(&self) -> &Node<V> {
+    pub(crate) fn root(&self) -> &Node<V> {
         &self.root
     }
-    #[cfg(test)]
-    pub fn into_root(self) -> Node<V> {
+    pub(crate) fn into_root(self) -> Node<V> {
         self.root
     }
     pub fn insert<K: ?Sized + BorrowedBytes>(&mut self, key: &K, value: V) -> Option<V> {
@@ -40,35 +50,46 @@ impl<V> PatriciaTree<V> {
     pub fn get_mut<K: ?Sized + BorrowedBytes>(&mut self, key: &K) -> Option<&mut V> {
         self.root.get_mut(key)
     }
+    pub fn split_by_prefix<K: ?Sized + BorrowedBytes>(&mut self, key: &K) -> Self {
+        match self.root.split_by_prefix(key) {
+            Some(node) => {
+                let new_root = Node::new(b"", [node], None);
+                let split = Self::from(new_root);
+                self.len -= split.len();
+                split
+            }
+            None => Self::new(),
+        }
+    }
     pub fn longest_common_prefix_len<K: ?Sized + BorrowedBytes>(&self, key: &K) -> usize {
-        self.root.longest_common_prefix_len(key, 0)
+        self.root.longest_common_prefix_len(key)
     }
     pub fn get_longest_common_prefix<'a, K: ?Sized + BorrowedBytes>(
         &self,
         key: &'a K,
     ) -> Option<(&'a [u8], &V)> {
         self.root
-            .get_longest_common_prefix(key, 0)
-            .map(|(n, v)| (&key.as_bytes()[..n], v))
+            .get_longest_common_prefix(key)
+            .and_then(|(n, v)| Some((&key.as_bytes()[..n], v.value()?)))
     }
     pub fn get_longest_common_prefix_mut<'a, K: ?Sized + BorrowedBytes>(
         &mut self,
         key: &'a K,
     ) -> Option<(&'a [u8], &mut V)> {
         self.root
-            .get_longest_common_prefix_mut(key, 0)
-            .map(|(n, v)| (&key.as_bytes()[..n], v))
+            .get_longest_common_prefix_mut(key)
+            .and_then(|(n, v)| Some((&key.as_bytes()[..n], v.value_mut()?)))
     }
     pub fn iter_prefix<K: ?Sized + BorrowedBytes>(
         &self,
         prefix: &K,
     ) -> Option<(usize, Nodes<'_, V>)> {
-        if let Some((common_prefix_len, node)) = self.root.get_prefix_node(prefix) {
+        if let Some((common_len, node)) = self.root.get_prefix_node(prefix) {
             let nodes = Nodes {
-                nodes: node.iter_descendant(),
+                nodes: node.iter(),
                 label_lens: Vec::new(),
             };
-            Some((prefix.as_bytes().len() - common_prefix_len, nodes))
+            Some((prefix.as_bytes().len() - common_len, nodes))
         } else {
             None
         }
@@ -77,12 +98,12 @@ impl<V> PatriciaTree<V> {
         &mut self,
         prefix: &K,
     ) -> Option<(usize, NodesMut<'_, V>)> {
-        if let Some((common_prefix_len, node)) = self.root.get_prefix_node_mut(prefix) {
+        if let Some((common_len, node)) = self.root.get_prefix_node_mut(prefix) {
             let nodes = NodesMut {
-                nodes: node.iter_descendant_mut(),
+                nodes: node.iter_mut(),
                 label_lens: Vec::new(),
             };
-            Some((prefix.as_bytes().len() - common_prefix_len, nodes))
+            Some((prefix.as_bytes().len() - common_len, nodes))
         } else {
             None
         }
@@ -90,35 +111,27 @@ impl<V> PatriciaTree<V> {
     pub(crate) fn common_prefixes<'a, 'b, K>(
         &'a self,
         key: &'b K,
-    ) -> node::CommonPrefixesIter<'a, 'b, K, V>
+    ) -> node_common::CommonPrefixesIter<'a, 'b, K, V>
     where
         K: ?Sized + BorrowedBytes,
     {
         self.root.common_prefixes(key)
     }
-    pub(crate) fn common_prefixes_owned<K>(&self, key: K) -> node::CommonPrefixesIterOwned<'_, K, V>
+    pub(crate) fn common_prefixes_owned<K>(
+        &self,
+        key: K,
+    ) -> node_common::CommonPrefixesIterOwned<'_, K, V>
     where
         K: Bytes + AsRef<K::Borrowed>,
     {
         self.root.common_prefixes_owned(key)
     }
     pub fn remove<K: ?Sized + BorrowedBytes>(&mut self, key: &K) -> Option<V> {
-        if let Some(old) = self.root.remove(key, 0) {
+        if let Some(old) = self.root.remove(key) {
             self.len -= 1;
             Some(old)
         } else {
             None
-        }
-    }
-    pub fn split_by_prefix<K: ?Sized + BorrowedBytes>(&mut self, prefix: &K) -> Self {
-        if let Some(splitted_root) = self.root.split_by_prefix(prefix, 0) {
-            let mut splitted_root = Node::new(prefix.as_bytes(), None, Some(splitted_root), None);
-            splitted_root.try_merge_with_child(1);
-            let splitted = Self::from(Node::new(b"", None, Some(splitted_root), None));
-            self.len -= splitted.len();
-            splitted
-        } else {
-            Self::new()
         }
     }
     pub fn clear(&mut self) {
@@ -147,14 +160,14 @@ impl<V> PatriciaTree<V> {
         }
     }
 }
-impl<V> Default for PatriciaTree<V> {
+impl<V> Default for RadixTree<V> {
     fn default() -> Self {
         Self::new()
     }
 }
-impl<V> From<Node<V>> for PatriciaTree<V> {
+impl<V> From<Node<V>> for RadixTree<V> {
     fn from(f: Node<V>) -> Self {
-        let mut this = PatriciaTree { root: f, len: 0 };
+        let mut this = RadixTree { root: f, len: 0 };
         let count = this.nodes().filter(|n| n.1.value().is_some()).count();
         this.len = count;
         this
@@ -163,7 +176,7 @@ impl<V> From<Node<V>> for PatriciaTree<V> {
 
 #[derive(Debug)]
 pub struct Nodes<'a, V: 'a> {
-    nodes: node::Iter<'a, V>,
+    nodes: node_common::Iter<'a, V>,
     label_lens: Vec<usize>,
 }
 impl<'a, V: 'a> Iterator for Nodes<'a, V> {
@@ -172,7 +185,6 @@ impl<'a, V: 'a> Iterator for Nodes<'a, V> {
         if let Some((level, node)) = self.nodes.next() {
             self.label_lens.resize(level + 1, 0);
             self.label_lens[level] = node.label().len();
-
             let parent_key_len = self.label_lens.iter().take(level).sum();
             Some((parent_key_len, node))
         } else {
@@ -183,7 +195,7 @@ impl<'a, V: 'a> Iterator for Nodes<'a, V> {
 
 #[derive(Debug)]
 pub struct NodesMut<'a, V: 'a> {
-    nodes: node::IterMut<'a, V>,
+    nodes: node_common::IterMut<'a, V>,
     label_lens: Vec<usize>,
 }
 impl<'a, V: 'a> Iterator for NodesMut<'a, V> {
@@ -203,16 +215,16 @@ impl<'a, V: 'a> Iterator for NodesMut<'a, V> {
 
 #[derive(Debug)]
 pub struct IntoNodes<V> {
-    nodes: node::IntoIter<V>,
+    nodes: node_common::IntoIter<V>,
     label_lens: Vec<usize>,
 }
+
 impl<V> Iterator for IntoNodes<V> {
     type Item = (usize, Node<V>);
     fn next(&mut self) -> Option<Self::Item> {
         if let Some((level, node)) = self.nodes.next() {
             self.label_lens.resize(level + 1, 0);
             self.label_lens[level] = node.label().len();
-
             let parent_key_len = self.label_lens.iter().take(level).sum();
             Some((parent_key_len, node))
         } else {
@@ -227,7 +239,7 @@ mod tests {
 
     #[test]
     fn it_works() {
-        let mut tree = PatriciaTree::new();
+        let mut tree = RadixTree::new();
         assert_eq!(tree.insert("".as_bytes(), 1), None);
         assert_eq!(tree.insert("".as_bytes(), 2), Some(1));
 
