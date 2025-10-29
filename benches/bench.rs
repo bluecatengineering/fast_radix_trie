@@ -406,15 +406,6 @@ fn bench_domains_remove(c: &mut Criterion) {
         })
     });
 
-    // group.bench_function("TrieHard remove", |b| {
-    //     b.iter(|| {
-    //         let mut trie = make_trie_hard(&words);
-    //         for w in &words {
-    //             trie.remove(w);
-    //         }
-    //     })
-    // });
-
     group.bench_function("radix_trie::Trie remove", |b| {
         b.iter(|| {
             let mut trie = make_rust_radix_trie(&words);
@@ -441,15 +432,6 @@ fn bench_random_remove(c: &mut Criterion) {
         })
     });
 
-    // group.bench_function("TrieHard remove", |b| {
-    //     b.iter(|| {
-    //         let mut trie = make_trie_hard(&words);
-    //         for w in &words {
-    //             trie.remove(w);
-    //         }
-    //     })
-    // });
-
     group.bench_function("radix_trie::Trie remove", |b| {
         b.iter(|| {
             let mut trie = make_rust_radix_trie(&words);
@@ -475,15 +457,6 @@ fn bench_long_remove(c: &mut Criterion) {
             }
         })
     });
-
-    // group.bench_function("TrieHard remove", |b| {
-    //     b.iter(|| {
-    //         let mut trie = make_trie_hard(&words);
-    //         for w in &words {
-    //             trie.remove(w);
-    //         }
-    //     })
-    // });
 
     group.bench_function("radix_trie::Trie remove", |b| {
         b.iter(|| {
