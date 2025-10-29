@@ -22,7 +22,7 @@ impl<T> GenericRadixSet<T> {
     /// # Examples
     ///
     /// ```
-    /// use fast_radix_tree::RadixSet;
+    /// use fast_radix_trie::RadixSet;
     ///
     /// let set = RadixSet::new();
     /// assert!(set.is_empty());
@@ -38,7 +38,7 @@ impl<T> GenericRadixSet<T> {
     /// # Examples
     ///
     /// ```
-    /// use fast_radix_tree::RadixSet;
+    /// use fast_radix_trie::RadixSet;
     ///
     /// let mut set = RadixSet::new();
     /// set.insert("foo");
@@ -54,7 +54,7 @@ impl<T> GenericRadixSet<T> {
     /// # Examples
     ///
     /// ```
-    /// use fast_radix_tree::RadixSet;
+    /// use fast_radix_trie::RadixSet;
     ///
     /// let mut set = RadixSet::new();
     /// assert!(set.is_empty());
@@ -74,7 +74,7 @@ impl<T> GenericRadixSet<T> {
     /// # Examples
     ///
     /// ```
-    /// use fast_radix_tree::RadixSet;
+    /// use fast_radix_trie::RadixSet;
     ///
     /// let mut set = RadixSet::new();
     /// set.insert("foo");
@@ -108,7 +108,7 @@ impl<T: Bytes> GenericRadixSet<T> {
     /// # Examples
     ///
     /// ```
-    /// use fast_radix_tree::RadixSet;
+    /// use fast_radix_trie::RadixSet;
     ///
     /// let mut set = RadixSet::new();
     /// set.insert("foo");
@@ -124,7 +124,7 @@ impl<T: Bytes> GenericRadixSet<T> {
     /// # Examples
     ///
     /// ```
-    /// use fast_radix_tree::RadixSet;
+    /// use fast_radix_trie::RadixSet;
     ///
     /// let mut set = RadixSet::new();
     ///
@@ -150,7 +150,7 @@ impl<T: Bytes> GenericRadixSet<T> {
     /// # Examples
     ///
     /// ```
-    /// use fast_radix_tree::RadixSet;
+    /// use fast_radix_trie::RadixSet;
     ///
     /// let mut set = RadixSet::new();
     /// set.insert("foo");
@@ -177,7 +177,7 @@ impl<T: Bytes> GenericRadixSet<T> {
     /// # Examples
     ///
     /// ```
-    /// use fast_radix_tree::RadixSet;
+    /// use fast_radix_trie::RadixSet;
     ///
     /// let mut set = RadixSet::new();
     /// assert!(set.insert("foo"));
@@ -193,7 +193,7 @@ impl<T: Bytes> GenericRadixSet<T> {
     /// # Examples
     ///
     /// ```
-    /// use fast_radix_tree::RadixSet;
+    /// use fast_radix_trie::RadixSet;
     ///
     /// let mut set = RadixSet::new();
     /// set.insert("foo");
@@ -211,7 +211,7 @@ impl<T: Bytes> GenericRadixSet<T> {
     /// # Examples
     ///
     /// ```
-    /// use fast_radix_tree::RadixSet;
+    /// use fast_radix_trie::RadixSet;
     ///
     /// let mut a = RadixSet::new();
     /// a.insert("rust");
@@ -235,7 +235,7 @@ impl<T: Bytes> GenericRadixSet<T> {
     /// # Examples
     ///
     /// ```
-    /// use fast_radix_tree::RadixSet;
+    /// use fast_radix_trie::RadixSet;
     ///
     /// let mut set = RadixSet::new();
     /// set.insert("foo");
@@ -255,7 +255,7 @@ impl<T: Bytes> GenericRadixSet<T> {
     /// # Examples
     ///
     /// ```
-    /// use fast_radix_tree::RadixSet;
+    /// use fast_radix_trie::RadixSet;
     ///
     /// let mut set = RadixSet::new();
     /// set.insert("foo");

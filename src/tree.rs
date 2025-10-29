@@ -9,23 +9,23 @@ use crate::{
 };
 
 #[derive(Clone)]
-pub struct RadixTree<V> {
+pub struct RadixTrie<V> {
     root: Node<V>,
     len: usize,
 }
 
-impl<V: fmt::Debug> fmt::Debug for RadixTree<V> {
+impl<V: fmt::Debug> fmt::Debug for RadixTrie<V> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        f.debug_struct("RadixTree")
+        f.debug_struct("RadixTrie")
             .field("root", &self.root)
             .field("len", &self.len)
             .finish()
     }
 }
 
-impl<V> RadixTree<V> {
+impl<V> RadixTrie<V> {
     pub fn new() -> Self {
-        RadixTree {
+        RadixTrie {
             root: Node::root(),
             len: 0,
         }
@@ -160,14 +160,14 @@ impl<V> RadixTree<V> {
         }
     }
 }
-impl<V> Default for RadixTree<V> {
+impl<V> Default for RadixTrie<V> {
     fn default() -> Self {
         Self::new()
     }
 }
-impl<V> From<Node<V>> for RadixTree<V> {
+impl<V> From<Node<V>> for RadixTrie<V> {
     fn from(f: Node<V>) -> Self {
-        let mut this = RadixTree { root: f, len: 0 };
+        let mut this = RadixTrie { root: f, len: 0 };
         let count = this.nodes().filter(|n| n.1.value().is_some()).count();
         this.len = count;
         this
@@ -239,7 +239,7 @@ mod tests {
 
     #[test]
     fn it_works() {
-        let mut tree = RadixTree::new();
+        let mut tree = RadixTrie::new();
         assert_eq!(tree.insert("".as_bytes(), 1), None);
         assert_eq!(tree.insert("".as_bytes(), 2), Some(1));
 
