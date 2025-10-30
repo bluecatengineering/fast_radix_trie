@@ -98,7 +98,7 @@ However, the library offers significant memory savings over the std data structu
 
 | crate                                                                                 |  time   |  memory  |                        data set |
 | :------------------------------------------------------------------------------------ | :-----: | :------: | ------------------------------: |
-| hashset                                                                               |  8.1s   | 1_784 MB | enwiki-latest-all-titles-in-ns0 |
+| hashset                                                                               |  8.1s   | 1,784 MB | enwiki-latest-all-titles-in-ns0 |
 | btree                                                                                 |  4.5s   | 1,607 MB | enwiki-latest-all-titles-in-ns0 |
 | [fast_radix_trie](https://github.com/bluecatengineering/fast_radix_trie) (this crate) |  4.5s   |  905 MB  | enwiki-latest-all-titles-in-ns0 |
 | hashset                                                                               | 0.3s \* |  108 MB  |                     top-domains |
