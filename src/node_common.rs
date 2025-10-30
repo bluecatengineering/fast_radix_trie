@@ -587,7 +587,6 @@ impl<V> Node<V> {
                                     let insert_index = cur
                                         .children_first_bytes()
                                         .enumerate()
-                                        // TODO: >= or > ?
                                         .find(|(_, b)| *b >= first_byte)
                                         .map(|(i, _)| i)
                                         .unwrap_or(cur.children_len());
@@ -1135,6 +1134,42 @@ mod tests {
         assert_eq!(root.children_len(), 2); // root now has 'apple' and 'te'
         assert_eq!(root.children()[0].label(), b"apple");
         assert_eq!(root.children()[1].label(), b"te");
+
+        let mut root = Node::root();
+        // Insert test key
+        assert_eq!(root.insert("b", 1), None);
+        assert_eq!(root.insert("a", 1), None);
+        assert_eq!(root.insert("z", 1), None);
+        assert_eq!(root.children()[0].label(), b"a");
+        assert_eq!(root.children()[1].label(), b"b");
+        assert_eq!(root.children()[2].label(), b"z");
+
+        let mut root = Node::root();
+        // Insert test key
+        assert_eq!(root.insert("b", 1), None);
+        assert_eq!(root.insert("aa", 1), None);
+        assert_eq!(root.insert("z", 1), None);
+        assert_eq!(root.children()[0].label(), b"aa");
+        assert_eq!(root.children()[1].label(), b"b");
+        assert_eq!(root.children()[2].label(), b"z");
+
+        let mut root = Node::root();
+        // Insert test key
+        assert_eq!(root.insert("z", 1), None);
+        assert_eq!(root.insert("b", 1), None);
+        assert_eq!(root.insert("a", 1), None);
+        assert_eq!(root.children()[0].label(), b"a");
+        assert_eq!(root.children()[1].label(), b"b");
+        assert_eq!(root.children()[2].label(), b"z");
+
+        let mut root = Node::root();
+        // Insert test key
+        assert_eq!(root.insert("z", 1), None);
+        assert_eq!(root.insert("b", 1), None);
+        assert_eq!(root.insert("a", 1), None);
+        assert_eq!(root.children()[0].label(), b"a");
+        assert_eq!(root.children()[1].label(), b"b");
+        assert_eq!(root.children()[2].label(), b"z");
     }
 
     /// Creates a standard test tree with the following structure:
