@@ -7,9 +7,7 @@
 
 [Documentation](https://docs.rs/fast_radix_trie)
 
-A radix tree compresses nodes such that common prefixes are shared. This minimizes memory usage for storing large sets of strings/bytes. Additionally, this library optimizes memory layout/padding to further reduce memory consumption, leading to significant memory savings and fast traversal time for large data sets. Memory usage can be dramatically less than storing in std's HashMap, BTreeMap or other rust trie crates.
-
-I've compared to other popular rust trie libraries, and `fast_radix_trie` seems to use dramatically less memory than most while also being faster for insert/remove/retrieve operations.
+A radix tree compresses nodes such that common prefixes are shared. This minimizes memory usage for storing large sets of strings/bytes. Additionally, this library optimizes memory layout/padding to further reduce memory consumption, leading to significant memory savings and fast traversal time for large data sets. `fast_radix_trie` has a benchmark suite run against std's HashMap/BTreeMap and other popular rust trie libraries, and `fast_radix_trie` seems to use less memory than most while also being faster or on par for insert/remove/retrieve operations.
 
 See [Radix tree](https://en.wikipedia.org/wiki/Radix_tree) for more details.
 
