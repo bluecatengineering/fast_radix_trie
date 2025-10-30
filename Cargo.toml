@@ -1,25 +1,30 @@
 [package]
-name = "fast_radix_tree"
-version = "0.1.0"
+name = "fast_radix_trie"
+version = "1.0.0"
 authors = [
 	"Takeru Ohta <phjgt308@gmail.com>",
 	"Evan Cameron <cameron.evan@gmail.com>",
 ]
-description = "Memory-efficient data structures based on radix tree"
-homepage = "https://github.com/bluecatengineering/radix_trie"
-repository = "https://github.com/bluecatengineering/radix_trie"
+description = "Memory-efficient trie data structures based on radix tree"
+homepage = "https://github.com/bluecatengineering/fast_radix_trie"
+repository = "https://github.com/bluecatengineering/fast_radix_trie"
 readme = "README.md"
-keywords = ["radix", "trie"]
+keywords = ["radix", "trie", "tree", "patricia"]
 categories = ["data-structures", "no-std"]
 license = "MIT"
 edition = "2024"
 rust-version = "1.85.0"
 
 [dependencies]
-memchr = { version = "2", default-features = false }
+memchr = { version = "2.7.6", default-features = false }
 
 [dev-dependencies]
+# dependencies for benchmark comparisons
 patricia_tree = "0.10.1"
+trie-hard = "0.1.0"
+radix_trie = "0.3.0"
+qptrie = "0.2.5"
+# bench deps
 criterion = "0.7.0"
 noargs = "0.4.1"
 rand = "0.9"

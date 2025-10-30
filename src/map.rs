@@ -1,5 +1,5 @@
 //! A map based on a patricia tree.
-use crate::tree::{self, RadixTree};
+use crate::tree::{self, RadixTrie};
 use crate::{BorrowedBytes, Bytes};
 use alloc::{borrow::ToOwned, string::String, vec::Vec};
 use core::{iter::FromIterator, marker::PhantomData};
@@ -13,7 +13,7 @@ pub type StringRadixMap<V> = GenericRadixMap<String, V>;
 /// Radix tree based map.
 #[derive(Debug)]
 pub struct GenericRadixMap<K, V> {
-    tree: RadixTree<V>,
+    tree: RadixTrie<V>,
     _key: PhantomData<K>,
 }
 
@@ -23,7 +23,7 @@ impl<K, V> GenericRadixMap<K, V> {
     /// # Examples
     ///
     /// ```
-    /// use fast_radix_tree::RadixMap;
+    /// use fast_radix_trie::RadixMap;
     ///
     /// let mut map = RadixMap::new();
     /// assert!(map.is_empty());
@@ -37,7 +37,7 @@ impl<K, V> GenericRadixMap<K, V> {
     /// ```
     pub fn new() -> Self {
         GenericRadixMap {
-            tree: RadixTree::new(),
+            tree: RadixTrie::new(),
             _key: PhantomData,
         }
     }
@@ -47,7 +47,7 @@ impl<K, V> GenericRadixMap<K, V> {
     /// # Examples
     ///
     /// ```
-    /// use fast_radix_tree::RadixMap;
+    /// use fast_radix_trie::RadixMap;
     ///
     /// let mut map = RadixMap::new();
     /// map.insert("foo", 1);
@@ -63,7 +63,7 @@ impl<K, V> GenericRadixMap<K, V> {
     /// # Examples
     ///
     /// ```
-    /// use fast_radix_tree::RadixMap;
+    /// use fast_radix_trie::RadixMap;
     ///
     /// let mut map = RadixMap::new();
     /// map.insert("foo", 1);
@@ -79,7 +79,7 @@ impl<K, V> GenericRadixMap<K, V> {
     /// # Examples
     ///
     /// ```
-    /// use fast_radix_tree::RadixMap;
+    /// use fast_radix_trie::RadixMap;
     ///
     /// let mut map = RadixMap::new();
     /// assert!(map.is_empty());
@@ -118,7 +118,7 @@ impl<K: Bytes, V> GenericRadixMap<K, V> {
     /// # Examples
     ///
     /// ```
-    /// use fast_radix_tree::RadixMap;
+    /// use fast_radix_trie::RadixMap;
     ///
     /// let mut map = RadixMap::new();
     /// map.insert("foo", 1);
@@ -134,7 +134,7 @@ impl<K: Bytes, V> GenericRadixMap<K, V> {
     /// # Examples
     ///
     /// ```
-    /// use fast_radix_tree::RadixMap;
+    /// use fast_radix_trie::RadixMap;
     ///
     /// let mut map = RadixMap::new();
     /// map.insert("foo", 1);
@@ -150,7 +150,7 @@ impl<K: Bytes, V> GenericRadixMap<K, V> {
     /// # Examples
     ///
     /// ```
-    /// use fast_radix_tree::RadixMap;
+    /// use fast_radix_trie::RadixMap;
     ///
     /// let mut map = RadixMap::new();
     /// map.insert("foo", 1);
@@ -167,7 +167,7 @@ impl<K: Bytes, V> GenericRadixMap<K, V> {
     /// # Examples
     ///
     /// ```
-    /// use fast_radix_tree::RadixMap;
+    /// use fast_radix_trie::RadixMap;
     ///
     /// let mut map = RadixMap::new();
     /// map.insert("foo", 1);
@@ -192,7 +192,7 @@ impl<K: Bytes, V> GenericRadixMap<K, V> {
     /// # Examples
     ///
     /// ```
-    /// use fast_radix_tree::RadixMap;
+    /// use fast_radix_trie::RadixMap;
     ///
     /// let mut map = RadixMap::new();
     /// map.insert("foo", 1);
@@ -223,7 +223,7 @@ impl<K: Bytes, V> GenericRadixMap<K, V> {
     /// # Examples
     ///
     /// ```
-    /// use fast_radix_tree::RadixMap;
+    /// use fast_radix_trie::RadixMap;
     ///
     /// let mut map = RadixMap::new();
     /// map.insert("foo", 1);
@@ -250,7 +250,7 @@ impl<K: Bytes, V> GenericRadixMap<K, V> {
     /// # Examples
     ///
     /// ```
-    /// use fast_radix_tree::RadixMap;
+    /// use fast_radix_trie::RadixMap;
     ///
     /// let mut map = RadixMap::new();
     /// assert_eq!(map.insert("foo", 1), None);
@@ -267,7 +267,7 @@ impl<K: Bytes, V> GenericRadixMap<K, V> {
     /// # Examples
     ///
     /// ```
-    /// use fast_radix_tree::RadixMap;
+    /// use fast_radix_trie::RadixMap;
     ///
     /// let mut map = RadixMap::new();
     /// map.insert("foo", 1);
@@ -283,7 +283,7 @@ impl<K: Bytes, V> GenericRadixMap<K, V> {
     /// # Example
     ///
     /// ```
-    /// use fast_radix_tree::RadixMap;
+    /// use fast_radix_trie::RadixMap;
     ///
     /// let mut t = RadixMap::new();
     /// t.insert("a", vec!["a"]);
@@ -316,7 +316,7 @@ impl<K: Bytes, V> GenericRadixMap<K, V> {
     /// # Example
     ///
     /// ```
-    /// use fast_radix_tree::RadixMap;
+    /// use fast_radix_trie::RadixMap;
     /// let mut t = RadixMap::new();
     /// t.insert("a", vec!["a"]);
     /// t.insert("x", vec!["x"]);
@@ -345,7 +345,7 @@ impl<K: Bytes, V> GenericRadixMap<K, V> {
     /// # Example
     ///
     /// ```
-    /// use fast_radix_tree::RadixMap;
+    /// use fast_radix_trie::RadixMap;
     /// let mut t = RadixMap::new();
     /// t.insert("a", vec!["a"]);
     /// t.insert("x", vec!["x"]);
@@ -373,7 +373,7 @@ impl<K: Bytes, V> GenericRadixMap<K, V> {
     /// # Examples
     ///
     /// ```
-    /// use fast_radix_tree::RadixMap;
+    /// use fast_radix_trie::RadixMap;
     ///
     /// let mut a = RadixMap::new();
     /// a.insert("rust", 1);
@@ -402,7 +402,7 @@ impl<K: Bytes, V> GenericRadixMap<K, V> {
     /// # Examples
     ///
     /// ```
-    /// use fast_radix_tree::RadixMap;
+    /// use fast_radix_trie::RadixMap;
     ///
     /// let map: RadixMap<_> =
     ///     vec![("foo", 1), ("bar", 2), ("baz", 3)].into_iter().collect();
@@ -418,7 +418,7 @@ impl<K: Bytes, V> GenericRadixMap<K, V> {
     /// # Examples
     ///
     /// ```
-    /// use fast_radix_tree::RadixMap;
+    /// use fast_radix_trie::RadixMap;
     ///
     /// let mut map: RadixMap<_> =
     ///     vec![("foo", 1), ("bar", 2), ("baz", 3)].into_iter().collect();
@@ -436,7 +436,7 @@ impl<K: Bytes, V> GenericRadixMap<K, V> {
     /// # Examples
     ///
     /// ```
-    /// use fast_radix_tree::RadixMap;
+    /// use fast_radix_trie::RadixMap;
     ///
     /// let map: RadixMap<_> =
     ///     vec![("foo", 1), ("bar", 2), ("baz", 3)].into_iter().collect();
@@ -452,7 +452,7 @@ impl<K: Bytes, V> GenericRadixMap<K, V> {
     /// # Examples
     ///
     /// ```
-    /// use fast_radix_tree::RadixMap;
+    /// use fast_radix_trie::RadixMap;
     ///
     /// let map: RadixMap<_> =
     ///     vec![("foo", 1), ("bar", 2), ("baz", 3)].into_iter().collect();
@@ -470,7 +470,7 @@ impl<K: Bytes, V> GenericRadixMap<K, V> {
     /// # Examples
     ///
     /// ```
-    /// use fast_radix_tree::RadixMap;
+    /// use fast_radix_trie::RadixMap;
     ///
     /// let mut map: RadixMap<_> =
     ///     vec![("foo", 1), ("bar", 2), ("baz", 3)].into_iter().collect();
@@ -492,7 +492,7 @@ impl<K: Bytes, V> GenericRadixMap<K, V> {
     /// # Examples
     ///
     /// ```
-    /// use fast_radix_tree::RadixMap;
+    /// use fast_radix_trie::RadixMap;
     ///
     /// let map: RadixMap<_> =
     ///     vec![("foo", 1), ("bar", 2), ("baz", 3)].into_iter().collect();
@@ -513,7 +513,7 @@ impl<K: Bytes, V> GenericRadixMap<K, V> {
     /// # Examples
     ///
     /// ```
-    /// use fast_radix_tree::RadixMap;
+    /// use fast_radix_trie::RadixMap;
     ///
     /// let mut map: RadixMap<_> =
     ///     vec![("foo", 1), ("bar", 2), ("baz", 3)].into_iter().collect();
@@ -755,6 +755,10 @@ where
 
 #[cfg(test)]
 mod tests {
+    use std::{collections::HashSet, sync::LazyLock};
+
+    use crate::RadixSet;
+
     use super::*;
     use rand::seq::SliceRandom;
 
@@ -1042,5 +1046,40 @@ mod tests {
                 self.map.common_prefix_values_owned(domain)
             }
         }
+    }
+
+    // insert big list of domains and make sure all entries are there
+    #[test]
+    #[ignore]
+    fn test_big_set() {
+        const TOP_MILLION: &str = include_str!("../data/top-domains.txt");
+
+        static DOMAINS_REV: LazyLock<Vec<String>> = LazyLock::new(|| {
+            TOP_MILLION
+                .split(|c: char| c.is_whitespace())
+                .collect::<HashSet<_>>()
+                .into_iter()
+                .map(|s| s.chars().rev().collect::<String>())
+                .collect()
+        });
+
+        fn get_domain_text() -> Vec<&'static str> {
+            DOMAINS_REV.iter().map(|s| s.as_str()).collect()
+        }
+
+        let words: Vec<&str> = get_domain_text();
+        let trie: RadixSet = words.iter().copied().collect();
+
+        let unique_words = words
+            .into_iter()
+            .collect::<HashSet<_>>()
+            .into_iter()
+            .collect::<Vec<_>>();
+
+        for word in &unique_words {
+            assert!(trie.contains(word))
+        }
+
+        assert_eq!(unique_words.len(), trie.len());
     }
 }

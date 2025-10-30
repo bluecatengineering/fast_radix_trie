@@ -1,4 +1,5 @@
-use fast_radix_tree::{RadixMap, RadixSet};
+use fast_radix_trie::{RadixMap, RadixSet};
+use radix_trie::TrieCommon;
 use std::{
     collections::{BTreeSet, HashSet},
     io::BufRead,
@@ -10,14 +11,18 @@ fn main() -> noargs::Result<()> {
 
     let kind = noargs::opt("kind")
         .doc("Data structure kindt")
-        .ty("radix | radix_map | hash | btree | count")
+        .ty("radix | radix_map | hash | btree | count | radix_trie | patricia | qptrie")
         .default("radix")
         .take(&mut args)
         .then(|a| {
             let value = a.value();
             match value {
-                "radix_map" | "radix" | "hash" | "btree" | "count" => Ok(value.to_string()),
-                _ => Err("must be one of: radix, radix_map, hash, btree, count"),
+                "radix_map" | "radix" | "hash" | "btree" | "count" | "radix_trie" | "patricia" | "qptrie" => {
+                    Ok(value.to_string())
+                }
+                _ => Err(
+                    "must be one of: radix, radix_map, hash, btree, count, radix_trie, patricia, qptrie",
+                ),
             }
         })?;
     if let Some(help) = args.finish()? {
@@ -39,6 +44,29 @@ fn main() -> noargs::Result<()> {
                 set.insert(line);
             });
             println!("# LINES: {}", set.len());
+        }
+        "patricia" => {
+            let mut set = patricia_tree::PatriciaSet::new();
+            each_line(|line| {
+                set.insert(line);
+            });
+            println!("# LINES: {}", set.len());
+        }
+        "radix_trie" => {
+            let mut set = radix_trie::Trie::new();
+            each_line(|line| {
+                set.insert(line, ());
+            });
+            println!("# LINES: {}", set.len());
+        }
+        "qptrie" => {
+            let mut set = qptrie::Trie::new();
+            let mut len = 0;
+            each_line(|line| {
+                set.insert(line, ());
+                len += 1;
+            });
+            println!("# LINES: {len}");
         }
         "hash" => {
             let mut set = HashSet::new();

@@ -32,11 +32,11 @@ jobs:
         toolchain: [stable, beta, nightly]
         features:
           - name: "all"
-            args: "--all-features"
+            args: "--all-features -- --include-ignored"
           - name: "realloc"
-            args: "--no-default-features --features realloc"
+            args: "--no-default-features --features realloc -- --include-ignored"
           - name: "no-realloc"
-            args: "--no-default-features"
+            args: "--no-default-features -- --include-ignored"
     steps:
       - name: Checkout sources
         uses: actions/checkout@v5

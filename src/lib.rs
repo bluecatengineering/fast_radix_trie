@@ -10,17 +10,66 @@
 //! # Examples
 //!
 //! ```
-//! use fast_radix_tree::RadixMap;
+//! use fast_radix_trie::RadixMap;
 //!
 //! let mut map = RadixMap::new();
-//! map.insert("foo", 1);
-//! map.insert("bar", 2);
-//! map.insert("baz", 3);
-//! assert_eq!(map.len(), 3);
+//! map.insert("a", 1);
+//! map.insert("apple", 2);
+//! map.insert("applesauce", 3);
+//! map.insert("apply", 4);
+//! map.insert("abort", 5);
+//! map.insert("abs", 6);
+//! map.insert("box", 7);
 //!
-//! assert_eq!(map.get("foo"), Some(&1));
-//! assert_eq!(map.get("bar"), Some(&2));
-//! assert_eq!(map.get("baz"), Some(&3));
+//! // &map = "" (-)
+//! //      ├─"a" (1)
+//! //            ├─"b" (-)
+//! //                  ├─"ort" (5)
+//! //                  └─"s" (6)
+//! //            └─"ppl" (-)
+//! //                  ├─"e" (2)
+//! //                        └─"sauce" (3)
+//! //                  └─"y" (4)
+//! //      └─"box" (7)
+//!
+//! assert_eq!(map.len(), 7);
+//!
+//! assert_eq!(map.get("a"), Some(&1));
+//! assert_eq!(map.get("apple"), Some(&2));
+//! assert_eq!(map.get("applesauce"), Some(&3));
+//! assert_eq!(map.get("applebees"), None);
+//!
+//! // You can split by prefix also to create separate the tree:
+//! let other = map.split_by_prefix("ap");
+//! dbg!(&map);
+//! // &map = "" (-)
+//! //      ├─"a" (1)
+//! //            └─"b" (-)
+//! //                  ├─"ort" (5)
+//! //                  └─"s" (6)
+//! //      └─"box" (7)
+//! dbg!(&other);
+//! // &other = "appl" (-)
+//! //      ├─"e" (2)
+//! //            └─"sauce" (3)
+//! //      └─"y" (4)
+//!
+//! // You can also use `common_prefixes` to return an iterator over all matching entries
+//! // as you traverse:
+//!
+//! let mut t = RadixMap::new();
+//! t.insert("a", vec!["a"]);
+//! t.insert("x", vec!["x"]);
+//! t.insert("ab", vec!["b"]);
+//! t.insert("abc", vec!["c"]);
+//! t.insert("abcd", vec!["d"]);
+//! t.insert("abcdf", vec!["f"]);
+//!
+//! assert!(t
+//!     .common_prefixes(b"abcde")
+//!     .map(|(_, v)| v)
+//!     .flatten()
+//!     .eq(vec![&"a", &"b", &"c", &"d"].into_iter()));
 //! ```
 #![warn(missing_docs)]
 #![cfg_attr(not(any(feature = "std", test)), no_std)]
