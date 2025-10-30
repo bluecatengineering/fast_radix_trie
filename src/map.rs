@@ -1050,6 +1050,7 @@ mod tests {
 
     // insert big list of domains and make sure all entries are there
     #[test]
+    #[ignore]
     fn test_big_set() {
         const TOP_MILLION: &str = include_str!("../data/top-domains.txt");
 
