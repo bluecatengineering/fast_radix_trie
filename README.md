@@ -96,20 +96,22 @@ Run `cargo bench` for results, but the performance for retrieval/removal is on p
 
 However, the library offers significant memory savings over the std data structures:
 
-| crate                                                                                 |  time   |  memory  |                        data set |
-| :------------------------------------------------------------------------------------ | :-----: | :------: | ------------------------------: |
-| hashset                                                                               |  8.1s   | 1,784 MB | enwiki-latest-all-titles-in-ns0 |
-| btree                                                                                 |  4.5s   | 1,607 MB | enwiki-latest-all-titles-in-ns0 |
-| [fast_radix_trie](https://github.com/bluecatengineering/fast_radix_trie) (this crate) |  4.5s   |  905 MB  | enwiki-latest-all-titles-in-ns0 |
-| hashset                                                                               | 0.3s \* |  108 MB  |                     top-domains |
-| btree                                                                                 |  0.48s  |  73 MB   |                     top-domains |
-| [fast_radix_trie](https://github.com/bluecatengineering/fast_radix_trie) (this crate) |  0.45s  | 51 MB \* |                     top-domains |
-| [rust_radix_trie](https://github.com/michaelsproul/rust_radix_trie/)                  |  1.03s  |  430 MB  |                     top-domains |
-| [qptrie](https://github.com/jedisct1/rust-qptrie/)                                    |  0.80s  |  115 MB  |                     top-domains |
+| crate                                                                                 |  time   |  memory   |                        data set |
+| :------------------------------------------------------------------------------------ | :-----: | :-------: | ------------------------------: |
+| hashset                                                                               |  8.1s   | 1,784 MB  | enwiki-latest-all-titles-in-ns0 |
+| btree                                                                                 | 4.5s \* | 1,607 MB  | enwiki-latest-all-titles-in-ns0 |
+| [fast_radix_trie](https://github.com/bluecatengineering/fast_radix_trie) (this crate) | 4.5s \* | 905 MB \* | enwiki-latest-all-titles-in-ns0 |
+| [rust_radix_trie](https://github.com/michaelsproul/rust_radix_trie/)                  |  9.5s   | 7,920 MB  | enwiki-latest-all-titles-in-ns0 |
+| [qptrie](https://github.com/jedisct1/rust-qptrie/)                                    |   7s    | 2,241 MB  | enwiki-latest-all-titles-in-ns0 |
+| hashset                                                                               | 0.3s \* |  108 MB   |                     top-domains |
+| btree                                                                                 |  0.48s  |   73 MB   |                     top-domains |
+| [fast_radix_trie](https://github.com/bluecatengineering/fast_radix_trie) (this crate) |  0.45s  | 50 MB \*  |                     top-domains |
+| [rust_radix_trie](https://github.com/michaelsproul/rust_radix_trie/)                  |  1.03s  |  430 MB   |                     top-domains |
+| [qptrie](https://github.com/jedisct1/rust-qptrie/)                                    |  0.80s  |  115 MB   |                     top-domains |
 
-You can see the only data structure to beat the insertion time is std HashSet but it takes almost twice as much memory for the top 1 million domains.
+The only data structure to beat the insertion time is std HashSet but it takes almost twice as much memory for the top 1 million domains. For retrieving individual random values, the benches show `fast_radix_trie` on the order of ~150 ns, competitive with std lib.
 
-For retrieving individual random values, the benches show `fast_radix_trie` on the order of ~150 ns, competitive with std lib.
+These table results are from running the `rev data/top-domains.txt | cargo run --example insert_lines --release --no-default-features -- --kind <kind>`
 
 ```console
 $ cargo run --example insert_lines --release -- --version 2> /dev/null
@@ -122,55 +124,29 @@ $ curl -s https://dumps.wikimedia.org/enwiki/latest/enwiki-latest-all-titles-in-
 $ du -hs enwiki-latest-all-titles-in-ns0
 387M    enwiki-latest-all-titles-in-ns0
 
-// HashSet
-$ /usr/bin/time -f "# ELAPSED: %E\n# MEMORY: %M" cargo run --example insert_lines --release -- --kind hash < enwiki-latest-all-titles-in-ns0
-# LINES: 18509089
-# ELAPSED: 0:08.14
-# MEMORY: 1784336 // 1,784 MB
-
-// BTreeSet
-$ /usr/bin/time -f "# ELAPSED: %E\n# MEMORY: %M" cargo run --example insert_lines --release -- --kind btree < enwiki-latest-all-titles-in-ns0
-# LINES: 18509089
-# ELAPSED: 0:04.45
-# MEMORY: 1607680 // 1,607 MB
-
 // RadixSet
-$ /usr/bin/time -f "# ELAPSED: %E\n# MEMORY: %M" cargo run --example insert_lines --release -- --kind patricia < enwiki-latest-all-titles-in-ns0
+$ /usr/bin/time -f "# ELAPSED: %E\n# MEMORY: %M" cargo run --example insert_lines --release --no-default-features -- --kind radix < enwiki-latest-all-titles-in-ns0
 # LINES: 18509089
 # ELAPSED: 0:04.59
 # MEMORY: 905360 // 905 MB
 ```
 
-For reference, sile's original code takes 20s and 850 MB on the same set)
+use `--kind` for different impls to see memory usage.
 
-with the top 1 million domains, saves over 50% compared to HashSet:
+A more realistic data set is probably the top 1 million domains. `fast_radix_trie` saves over 50% compared to HashSet.
 
 ```console
 $ du -sh top-domains.txt
 15M top-domains.txt
 
-// HashSet
-$ /usr/bin/time -f "# ELAPSED: %E\n# MEMORY: %M" cargo run --no-default-features --example insert_lines --release -- --kind hashset < rev top-domains.txt
-# LINES: 1000000
-# ELAPSED: 0:00.30
-# MEMORY: 108324 // 108 MB
-
-// BTreeSet
-$ /usr/bin/time -f "# ELAPSED: %E\n# MEMORY: %M" cargo run --no-default-features --example insert_lines --release -- --kind btree < rev top-domains.txt
-# LINES: 1000000
-# ELAPSED: 0:00.48
-# MEMORY: 73412 // 73 MB
-
 // RadixSet (this crate)
-$ /usr/bin/time -f "# ELAPSED: %E\n# MEMORY: %M" cargo run --no-default-features --example insert_lines --release -- --kind radix < rev top-domains.txt
+$ rev data/top-domain.txt | /usr/bin/time -f "# ELAPSED: %E\n# MEMORY: %M" cargo run --no-default-features --example insert_lines --release -- --kind radix
 # LINES: 1000000
 # ELAPSED: 0:00.45
 # MEMORY: 49936 // 50 MB
 ```
 
-`rust_radix_trie` uses ~430 MB on the reversed domains . **Compared to just 50 MB for this crate.**
-
-## Comparison with other trie libraries
+## Criterion benchmarks
 
 `cargo bench` results for insert/get/remove of random values, which is probably a worst case for a prefix matching data structure like a trie (Patricia is the `patricia_tree` crate):
 
