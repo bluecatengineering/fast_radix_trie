@@ -37,6 +37,12 @@ impl<V> Node<V> {
     }
 
     #[allow(unused)]
+    /// Returns the label of this node.
+    pub(crate) fn label_str_lossy(&self) -> alloc::borrow::Cow<'_, str> {
+        String::from_utf8_lossy(self.label())
+    }
+
+    #[allow(unused)]
     pub(crate) fn label_mut(&mut self) -> &mut [u8] {
         unsafe { PtrData::<V>::label_mut(self.ptr) }
     }
@@ -533,7 +539,7 @@ impl<V> Node<V> {
                     }
                     return None;
                 }
-                (_, None) => {
+                (n, None) => {
                     // new child needed but next element doesn't exist
                     match key.len().cmp(&cur.label_len()) {
                         Ordering::Less => {
@@ -571,13 +577,26 @@ impl<V> Node<V> {
                                         .map(|(i, _)| i)
                                         .unwrap_or(cur.children_len());
 
-                                    // we now have index of where we can insert
-                                    let child = Node::new(key, [], Some(value));
-                                    // SAFETY: insert_index must be <= children len
-                                    unsafe {
-                                        cur.add_child(child, insert_index);
+                                    // if key is bigger than max len and there's no common prefix
+                                    // or the previous length was 255, we need to split off
+                                    // the first chunk and chain the labels together
+                                    if (n == 0 || n == MAX_LABEL_LEN) && key.len() > MAX_LABEL_LEN {
+                                        let child: Node<V> =
+                                            Node::new(&key[..MAX_LABEL_LEN], [], None);
+                                        unsafe {
+                                            cur.add_child(child, insert_index);
+                                            cur = cur.children_mut().get_unchecked_mut(insert_index)
+                                        }
+                                        continue;
+                                    } else {
+                                        // we now have index of where we can insert
+                                        let child = Node::new(key, [], Some(value));
+                                        // SAFETY: insert_index must be <= children len
+                                        unsafe {
+                                            cur.add_child(child, insert_index);
+                                        }
+                                        return None;
                                     }
-                                    return None;
                                 }
                             }
                         }
@@ -1169,6 +1188,51 @@ mod tests {
                 i.to_be_bytes().as_slice()
             );
         }
+    }
+
+    #[test]
+    fn test_insert_static_size() {
+        let mut node = Node::root();
+
+        let label = [b'0'; 35];
+        node.insert(&label, 1);
+
+        assert_eq!(node.get(&label), Some(&1));
+    }
+
+    #[test]
+    fn test_insert_long_label() {
+        let mut node = Node::root();
+
+        // insert 000...00000
+        let label = [b'0'; 260];
+        node.insert(&label[..], 1);
+
+        assert_eq!(node.get(&label[..]), Some(&1));
+        node.insert("1", 2);
+        assert_eq!(node.get("1"), Some(&2));
+        node.insert("2", 3);
+        assert_eq!(node.get("2"), Some(&3));
+
+        // insert 000...11111
+        let mut label = [b'0'; 255].to_vec();
+        label.extend(b"11111");
+        node.insert(&label[..], 4);
+        assert_eq!(node.get(label.as_slice()), Some(&4));
+    }
+
+    #[test]
+    fn test_insert_double_long_label() {
+        let mut node = Node::root();
+
+        let label = [b'3'; 560];
+        node.insert(&label[..], 3);
+
+        assert_eq!(node.get(&label[..]), Some(&3));
+        node.insert("1", 1);
+        assert_eq!(node.get("1"), Some(&1));
+        node.insert("2", 2);
+        assert_eq!(node.get("2"), Some(&2));
     }
 
     #[test]

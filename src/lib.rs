@@ -153,6 +153,20 @@ impl BorrowedBytes for [u8] {
     }
 }
 
+impl<const N: usize> BorrowedBytes for [u8; N] {
+    fn as_bytes(&self) -> &[u8] {
+        self
+    }
+
+    fn is_valid_bytes(_bytes: &[u8]) -> bool {
+        true
+    }
+
+    fn from_bytes(bytes: &[u8]) -> &Self {
+        bytes.try_into().unwrap()
+    }
+}
+
 impl BorrowedBytes for str {
     fn as_bytes(&self) -> &[u8] {
         self.as_bytes()
