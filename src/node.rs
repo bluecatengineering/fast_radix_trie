@@ -112,6 +112,10 @@ impl<V> Node<V> {
             "child index out of bounds: {i} > {}",
             self.children_len()
         );
+        debug_assert!(
+            self.children_len() < u8::MAX as usize,
+            "nodes can have max 255 children",
+        );
 
         let new_header = NodeHeader {
             label_len: self.label_len() as u8,

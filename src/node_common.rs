@@ -582,7 +582,11 @@ impl<V> Node<V> {
                                     continue;
                                 }
                                 None => {
-                                    // could use binary_search(first_byte).unwrap_err() if we store
+                                    // benchmarked a binary search and it's actually slower than sequential.
+                                    // Likely the max label size (255) makes branch misses not worth it.
+                                    //    cur.children()
+                                    //    .binary_search_by(|n| n.label()[0].cmp(&first_byte))
+                                    //    .unwrap_err();
                                     // first bytes inline or allocate
                                     let insert_index = cur
                                         .children_first_bytes()
@@ -1158,7 +1162,9 @@ mod tests {
         assert_eq!(root.insert("z", 1), None);
         assert_eq!(root.insert("b", 1), None);
         assert_eq!(root.insert("a", 1), None);
+        assert_eq!(root.insert("a", 2), Some(1));
         assert_eq!(root.children()[0].label(), b"a");
+        assert_eq!(root.children()[0].value(), Some(&2));
         assert_eq!(root.children()[1].label(), b"b");
         assert_eq!(root.children()[2].label(), b"z");
 
@@ -1170,6 +1176,32 @@ mod tests {
         assert_eq!(root.children()[0].label(), b"a");
         assert_eq!(root.children()[1].label(), b"b");
         assert_eq!(root.children()[2].label(), b"z");
+    }
+
+    #[test]
+    fn test_children_push_full() {
+        let mut node = Node::root();
+
+        for i in 0..255_u8 {
+            node.insert(&i.to_be_bytes()[..], i);
+        }
+
+        assert_eq!(node.children().len(), 255);
+        for i in 0..255u8 {
+            assert_eq!(
+                node.children()[i as usize].label(),
+                i.to_be_bytes().as_slice()
+            );
+        }
+    }
+
+    #[test]
+    #[should_panic]
+    fn test_children_push_more_than_255_items() {
+        let mut node = Node::root();
+        for i in 0..=255_u8 {
+            node.insert(&i.to_be_bytes()[..], i);
+        }
     }
 
     /// Creates a standard test tree with the following structure:

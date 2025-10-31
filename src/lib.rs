@@ -133,10 +133,6 @@ pub trait BorrowedBytes {
     /// Caller can assume that `is_valid_bytes(bytes)` is `true`.
     fn from_bytes(bytes: &[u8]) -> &Self;
 
-    /// returns the index of the longest common prefix and the ordering of the next character
-    /// if it exists
-    fn longest_common_prefix(&self, bytes: &[u8]) -> (usize, Option<Ordering>);
-
     /// Returns `true` if this instance is empty, otherwise `false`.
     fn is_empty(&self) -> bool {
         self.as_bytes().is_empty()
@@ -155,10 +151,6 @@ impl BorrowedBytes for [u8] {
     fn from_bytes(bytes: &[u8]) -> &Self {
         bytes
     }
-
-    fn longest_common_prefix(&self, bytes: &[u8]) -> (usize, Option<Ordering>) {
-        crate::longest_common_prefix(self, bytes)
-    }
 }
 
 impl BorrowedBytes for str {
@@ -172,10 +164,6 @@ impl BorrowedBytes for str {
 
     fn from_bytes(bytes: &[u8]) -> &Self {
         core::str::from_utf8(bytes).expect("unreachable")
-    }
-
-    fn longest_common_prefix(&self, bytes: &[u8]) -> (usize, Option<Ordering>) {
-        longest_common_prefix(self.as_bytes(), bytes)
     }
 }
 
