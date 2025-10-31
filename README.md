@@ -86,7 +86,7 @@ assert!(t
 
 ## Differences with patricia_tree
 
-This library passes the original test suite (with minor modifications like debug output), so you should just be able to substitute one for the other and enjoy the benefits. There's one cavet: node labels can't be longer than 255. Keys can be as long as you want, but a node label, i.e. a compressed subsection of the key that is inserted into the trie cannot.
+This library passes the original test suite (with minor modifications like debug output), so you should just be able to substitute one for the other.
 
 ## Benchmarks
 

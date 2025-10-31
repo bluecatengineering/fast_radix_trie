@@ -1458,6 +1458,20 @@ mod tests {
         assert!(root.get_longest_common_prefix_mut("b").is_none());
     }
 
+    // modified test from patricia_tree suite
+    #[test]
+    fn long_label_works() {
+        let mut root = Node::root();
+        root.insert(&[b'a'; 256][..], 10);
+        assert_eq!(root.children()[0].label(), &[b'a'; 255][..]);
+        assert_eq!(root.children()[0].value(), None);
+        assert!(!root.children()[0].children().is_empty());
+
+        let child = &root.children()[0].children()[0];
+        assert_eq!(child.label(), b"a");
+        assert_eq!(child.value(), Some(&10));
+    }
+
     #[test]
     fn iter_works() {
         let mut set = Node::root();
