@@ -263,7 +263,7 @@ impl<V> Node<V> {
         let new_size = new_ptr_data.layout.size();
         let new_layout = new_ptr_data.layout;
         let old_layout = self.ptr_data().layout;
-        // TODO: could use ptr::copy since we use realloc
+        // take value, will be written in resized space
         let value = self.take_value();
 
         let old_ptr = NodePtrAndData {

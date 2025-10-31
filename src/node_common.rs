@@ -204,30 +204,6 @@ impl<V> Node<V> {
         &self,
         key: &K,
     ) -> Option<(usize, &Self)> {
-        // TODO: benchmark version with longest_common_prefix
-        // loop {
-        //     // strip label prefix off key
-        //     let (offset, _) = crate::longest_common_prefix(key, cur.label());
-        //     key = &key[offset..];
-
-        //     match key.first() {
-        //         // end of the line
-        //         None => return Some((offset, cur)),
-        //         Some(first) => {
-        //             // find child
-        //             let Some(next) = cur.child_with_first(*first) else {
-        //                 // is key is a prefix of current label then return
-        //                 if crate::strip_prefix(cur.label(), key).is_some() {
-        //                     return Some((offset, cur));
-        //                 } else {
-        //                     // no child exists and we're not at a partial prefix
-        //                     return None;
-        //                 }
-        //             };
-        //             cur = next;
-        //         }
-        //     }
-        // }
         let mut cur = self;
         let mut key = key.as_bytes();
         loop {
