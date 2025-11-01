@@ -503,11 +503,13 @@ impl<V> Node<V> {
     }
 
     /// insert with a function call or modify the existing entry
+    // INVARIANT: f(None) will be called when no value is found, **it must always return a value**
+    // f(Some(&mut cur)) is only called when we find an entry
     #[inline(always)]
-    fn upsert<K, F>(&mut self, key: &K, f: F) -> Option<V>
+    fn entry<K, F>(&mut self, key: &K, f: F) -> Option<V>
     where
         K: ?Sized + BorrowedBytes,
-        F: FnOnce(Option<&mut Node<V>>) -> Option<V>,
+        F: for<'a> FnOnce(Option<&'a mut Node<V>>) -> Option<V>,
     {
         let mut cur = self;
         let mut key = key.as_bytes();
@@ -546,6 +548,7 @@ impl<V> Node<V> {
                     // new child needed but next element doesn't exist
                     match key.len().cmp(&cur.label_len()) {
                         Ordering::Less => {
+                            // f(None) must always return a value
                             if let Some(val) = f(None) {
                                 unsafe { cur.split_at(key.len(), None) };
                                 cur.set_value(val);
@@ -602,33 +605,40 @@ impl<V> Node<V> {
             }
         }
     }
+
     /// insert with a function call or modify the existing entry
     pub fn insert_with_or_modify<K, F, G>(&mut self, key: &K, insert: F, modify: G)
     where
         K: ?Sized + BorrowedBytes,
         F: FnOnce() -> V,
-        G: FnOnce(&mut V),
+        // lifetime polymorphic
+        G: for<'a> FnOnce(&'a mut V),
     {
-        self.upsert(key, |entry| match entry {
+        self.entry(key, |entry| match entry {
+            // modify found entry
             Some(cur) => {
                 if let Some(v) = cur.value_mut() {
                     modify(v);
                 }
                 None
             }
+            // insert new if not found
             None => Some(insert()),
         });
     }
-    /// insert key and value into node, returning the old value if replacing
+
+    /// insert key and value into node, replacing value if key exists
     /// SAFETY:
     /// caller must not insert an empty label into children. only the root node can have an empty label
     pub fn insert<K: ?Sized + BorrowedBytes>(&mut self, key: &K, value: V) -> Option<V> {
-        self.upsert(key, |entry| match entry {
+        self.entry(key, |entry| match entry {
             Some(cur) => {
+                // swap value if we found the entry
                 let old_val = cur.take_value();
                 cur.set_value(value);
                 old_val
             }
+            // insert new value if not found
             None => Some(value),
         })
     }
@@ -1119,7 +1129,7 @@ mod tests {
         let mut root = Node::root();
         root.insert("test", 10);
 
-        // --- Test 1: Modify an existing key ---
+        // modify
         let mut modify_called = false;
         root.insert_with_or_modify(
             "test",
@@ -1132,7 +1142,7 @@ mod tests {
         assert!(modify_called);
         assert_eq!(root.get("test"), Some(&15));
 
-        // --- Test 2: Insert a new key ---
+        // insert new
         let mut insert_called = false;
         root.insert_with_or_modify(
             "new_key",
@@ -1145,9 +1155,8 @@ mod tests {
         assert!(insert_called);
         assert_eq!(root.get("new_key"), Some(&100));
 
-        // --- Test 3: Key matches a node without a value (should insert) ---
         root.insert("apple", 1);
-        // This creates an intermediate node "appl" without a value.
+        // create intermediate node "appl"
         let mut insert_called_on_prefix = false;
         root.insert_with_or_modify(
             "appl",
@@ -1165,7 +1174,7 @@ mod tests {
     fn test_insert_with_or_modify_vec() {
         let mut root: Node<Vec<u32>> = Node::root();
 
-        // 1. Insert a new key. The `insert` closure should be called.
+        // insert() a new key
         root.insert_with_or_modify(
             "counts",
             || vec![0], // Create a new vector with one element.
@@ -1173,7 +1182,7 @@ mod tests {
         );
         assert_eq!(root.get("counts"), Some(&vec![0]));
 
-        // 2. Modify the existing key. The `modify` closure should be called.
+        // modify() the existing key
         root.insert_with_or_modify(
             "counts",
             || panic!("insert should not be called on modify"),
@@ -1183,7 +1192,7 @@ mod tests {
         );
         assert_eq!(root.get("counts"), Some(&vec![0, 1]));
 
-        // 3. Modify again to ensure it works multiple times.
+        // modify()
         root.insert_with_or_modify(
             "counts",
             || panic!("insert should not be called on modify"),
@@ -1191,6 +1200,7 @@ mod tests {
                 v.push(2);
             },
         );
+        // created with 0 then pushed 1, 2
         assert_eq!(root.get("counts"), Some(&vec![0, 1, 2]));
     }
 
