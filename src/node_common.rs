@@ -1218,8 +1218,23 @@ mod tests {
         let mut label = [b'0'; 255].to_vec();
         label.extend(b"11111");
         node.insert(&label[..], 4);
-        dbg!(&node);
         assert_eq!(node.get(label.as_slice()), Some(&4));
+
+        let label = [b'1'; 240];
+        node.insert(&label[..], 5);
+        assert_eq!(node.get(&label), Some(&5));
+        assert_eq!(node.get("1"), Some(&2));
+
+        let label = [b'1'; 260];
+        node.insert(&label[..], 6);
+        assert_eq!(node.get(&[b'1'; 240]), Some(&5));
+        assert_eq!(node.get(&label), Some(&6));
+        assert_eq!(node.get("1"), Some(&2));
+
+        // 240 - 1 = 239
+        assert_eq!(node.get_node(&[b'1'; 240]).unwrap().label_len(), 239);
+        // 260 - 240 = 20
+        assert_eq!(node.get_node(&label).unwrap().label_len(), 20);
     }
 
     #[test]
