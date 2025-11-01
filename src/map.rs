@@ -262,6 +262,30 @@ impl<K: Bytes, V> GenericRadixMap<K, V> {
         self.tree.insert(key.as_ref(), value)
     }
 
+    /// Inserts a key-value pair into this map with closure, or modify existing value
+    ///
+    /// If the map did not have this key present, `None` is returned.
+    /// If the map did have this key present, the value is updated, and the old value is returned.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use fast_radix_trie::RadixMap;
+    ///
+    /// let mut map = RadixMap::new();
+    /// map.insert_with_or_modify("foo", || vec![1], |v| v.push(2));
+    /// map.insert_with_or_modify("foo", || vec![1], |v| v.push(2));
+    /// assert_eq!(map.get("foo"), Some(&vec![1, 2]));
+    /// ```
+    pub fn insert_with_or_modify<Q, F, G>(&mut self, key: Q, insert: F, modify: G)
+    where
+        Q: AsRef<K::Borrowed>,
+        F: FnOnce() -> V,
+        G: for<'a> FnOnce(&'a mut V),
+    {
+        self.tree
+            .insert_with_or_modify(key.as_ref(), insert, modify);
+    }
     /// Removes a key from this map, returning the value at the key if the key was previously in it.
     ///
     /// # Examples
