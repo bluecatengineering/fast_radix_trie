@@ -15,7 +15,7 @@ See [Radix tree](https://en.wikipedia.org/wiki/Radix_tree) for more details.
 
 Crate offers two implementations, one optimized for absolute minimum memory usage (minimizing padding/alignment where possible), and one optimized for mutations that uses `realloc`. Use `--no-default-features` to disable the `realloc` feature and use the implementation that's optimized for memory. This crate is no_std compatible.
 
-The code is originally based on the excellent [patricia_tree](https://github.com/sile/patricia_tree), but whereas patricia tree uses a child/sibling pointer for each node (where siblings are traversed in a linked list to find nodes at the same level) a radix tree stores all children node pointers inline for faster traversal. It costs a small bit more memory, around 5% depending on the data set, but can be around 4x faster to build the data structure, 2x faster for removals (more comparisons in `cargo bench`). If you use the `realloc` impl, mutations should be faster as we attempt to resize nodes rather than allocate new ones on mutation, particularly useful if you are removing entries.
+The code is originally based on the excellent [patricia_tree](https://github.com/sile/patricia_tree), but whereas patricia tree uses a child/sibling pointer for each node (where siblings are traversed in a linked list to find nodes at the same level) a radix tree stores all children node pointers inline for faster traversal. It costs a small bit more memory, usually around 5% depending on the data set and size/alignment of value inserted, but can be around 4x faster to build the data structure, 2x faster for removals (more comparisons in `cargo bench`). If you use the `realloc` impl, mutations should be faster as we attempt to resize nodes rather than allocate new ones on mutation, particularly useful if you are removing entries.
 
 This library uses unsafe and raw pointers because nodes are dynamically sized to store node labels and children pointers at dynamic offsets inline in each node allocation. By doing this we can drastically reduce memory usage. The test suite is comprehensive and passes `miri`.
 
@@ -101,13 +101,13 @@ However, the library offers significant memory savings over the std data structu
 | btree                                                                                 | 4.5s \*  | 1,607 MB  | enwiki-latest-all-titles-in-ns0 |
 | [rust_radix_trie](https://github.com/michaelsproul/rust_radix_trie/)                  |   9.5s   | 7,920 MB  | enwiki-latest-all-titles-in-ns0 |
 | [qptrie](https://github.com/jedisct1/rust-qptrie/)                                    |    7s    | 2,241 MB  | enwiki-latest-all-titles-in-ns0 |
-| [patricia_tree](https://github.com/sile/patricia_tree/)                               |   20s    | 851 MB \* | enwiki-latest-all-titles-in-ns0 |
+| [patricia_tree](https://github.com/sile/patricia_tree/)                               |   25s    | 874 MB \* | enwiki-latest-all-titles-in-ns0 |
 | [fast_radix_trie](https://github.com/bluecatengineering/fast_radix_trie) (this crate) | 0.45s \* | 50 MB \*  |                     top-domains |
 | hashset                                                                               | 0.3s \*  |  108 MB   |                     top-domains |
 | btree                                                                                 |  0.48s   |   73 MB   |                     top-domains |
 | [rust_radix_trie](https://github.com/michaelsproul/rust_radix_trie/)                  |  1.03s   |  430 MB   |                     top-domains |
 | [qptrie](https://github.com/jedisct1/rust-qptrie/)                                    |  0.80s   |  115 MB   |                     top-domains |
-| [patricia_tree](https://github.com/sile/patricia_tree/)                               |  1.06s   | 46 MB \*  |                     top-domains |
+| [patricia_tree](https://github.com/sile/patricia_tree/)                               |  1.27s   | 48 MB \*  |                     top-domains |
 
 The only data structure to beat the insertion time is std HashSet but it takes almost twice as much memory for the top 1 million domains. For retrieving individual random values, the benches show `fast_radix_trie` on the order of ~150 ns, competitive with std lib.
 

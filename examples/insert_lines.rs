@@ -9,20 +9,29 @@ fn main() -> noargs::Result<()> {
     let mut args = noargs::raw_args();
     noargs::HELP_FLAG.take_help(&mut args);
 
+    let kinds = [
+        "radix_map",
+        "radix",
+        "hash",
+        "btree",
+        "count",
+        "radix_trie",
+        "patricia",
+        "patricia_map",
+        "qptrie",
+    ];
+
     let kind = noargs::opt("kind")
         .doc("Data structure kindt")
-        .ty("radix | radix_map | hash | btree | count | radix_trie | patricia | qptrie")
+        .ty(kinds.join(" | ").leak())
         .default("radix")
         .take(&mut args)
         .then(|a| {
             let value = a.value();
-            match value {
-                "radix_map" | "radix" | "hash" | "btree" | "count" | "radix_trie" | "patricia" | "qptrie" => {
-                    Ok(value.to_string())
-                }
-                _ => Err(
-                    "must be one of: radix, radix_map, hash, btree, count, radix_trie, patricia, qptrie",
-                ),
+            if kinds.contains(&value) {
+                Ok(value.to_string())
+            } else {
+                Err(format!("must be one of: {}", kinds.join(" , ")))
             }
         })?;
     if let Some(help) = args.finish()? {
@@ -34,7 +43,7 @@ fn main() -> noargs::Result<()> {
         "radix_map" => {
             let mut set = RadixMap::new();
             each_line(|line| {
-                set.insert(line, rand::random::<u64>());
+                set.insert(line, 1_u32);
             });
             println!("# LINES: {}", set.len());
         }
@@ -49,6 +58,13 @@ fn main() -> noargs::Result<()> {
             let mut set = patricia_tree::PatriciaSet::new();
             each_line(|line| {
                 set.insert(line);
+            });
+            println!("# LINES: {}", set.len());
+        }
+        "patricia_map" => {
+            let mut set = patricia_tree::PatriciaMap::new();
+            each_line(|line| {
+                set.insert(line, 1_u32);
             });
             println!("# LINES: {}", set.len());
         }
