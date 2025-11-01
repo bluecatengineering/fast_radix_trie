@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## Added
+
+- trait impl BorrowedBytes for static sized arrays
+
 ## Changed
 
 - support for key lens greater than 255
+
+## Removed
+
+- unused trait methods in BorrowedBytes
