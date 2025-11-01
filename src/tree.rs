@@ -44,6 +44,21 @@ impl<V> RadixTrie<V> {
             None
         }
     }
+    pub fn insert_with_or_modify<K, F, G>(&mut self, key: &K, insert: F, modify: G)
+    where
+        K: ?Sized + BorrowedBytes,
+        F: FnOnce() -> V,
+        G: for<'a> FnOnce(&'a mut V),
+    {
+        self.root.insert_with_or_modify(
+            key,
+            || {
+                self.len += 1;
+                insert()
+            },
+            modify,
+        );
+    }
     pub fn get<K: ?Sized + BorrowedBytes>(&self, key: &K) -> Option<&V> {
         self.root.get(key)
     }

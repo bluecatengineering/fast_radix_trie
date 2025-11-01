@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## Added
 
 - trait impl BorrowedBytes for static sized arrays
+- `insert_with_or_modify` for tree/map
 
 ## Changed
 
