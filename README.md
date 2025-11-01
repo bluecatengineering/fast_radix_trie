@@ -86,7 +86,7 @@ assert!(t
 
 ## Differences with patricia_tree
 
-This library passes the original test suite (with minor modifications like debug output), so you should just be able to substitute one for the other and enjoy the benefits. There's one cavet: node labels can't be longer than 255. Keys can be as long as you want, but a node label, i.e. a compressed subsection of the key that is inserted into the trie cannot.
+This library passes the original test suite (with minor modifications like debug output), so you should just be able to substitute one for the other.
 
 ## Benchmarks
 
@@ -94,18 +94,20 @@ Run `cargo bench` for results, but the performance for retrieval/removal is on p
 
 However, the library offers significant memory savings over the std data structures:
 
-| crate                                                                                 |  time   |  memory   |                        data set |
-| :------------------------------------------------------------------------------------ | :-----: | :-------: | ------------------------------: |
-| hashset                                                                               |  8.1s   | 1,784 MB  | enwiki-latest-all-titles-in-ns0 |
-| btree                                                                                 | 4.5s \* | 1,607 MB  | enwiki-latest-all-titles-in-ns0 |
-| [fast_radix_trie](https://github.com/bluecatengineering/fast_radix_trie) (this crate) | 4.5s \* | 905 MB \* | enwiki-latest-all-titles-in-ns0 |
-| [rust_radix_trie](https://github.com/michaelsproul/rust_radix_trie/)                  |  9.5s   | 7,920 MB  | enwiki-latest-all-titles-in-ns0 |
-| [qptrie](https://github.com/jedisct1/rust-qptrie/)                                    |   7s    | 2,241 MB  | enwiki-latest-all-titles-in-ns0 |
-| hashset                                                                               | 0.3s \* |  108 MB   |                     top-domains |
-| btree                                                                                 |  0.48s  |   73 MB   |                     top-domains |
-| [fast_radix_trie](https://github.com/bluecatengineering/fast_radix_trie) (this crate) |  0.45s  | 50 MB \*  |                     top-domains |
-| [rust_radix_trie](https://github.com/michaelsproul/rust_radix_trie/)                  |  1.03s  |  430 MB   |                     top-domains |
-| [qptrie](https://github.com/jedisct1/rust-qptrie/)                                    |  0.80s  |  115 MB   |                     top-domains |
+| crate                                                                                 |   time   |  memory   |                        data set |
+| :------------------------------------------------------------------------------------ | :------: | :-------: | ------------------------------: |
+| [fast_radix_trie](https://github.com/bluecatengineering/fast_radix_trie) (this crate) | 4.5s \*  | 905 MB \* | enwiki-latest-all-titles-in-ns0 |
+| hashset                                                                               |   8.1s   | 1,784 MB  | enwiki-latest-all-titles-in-ns0 |
+| btree                                                                                 | 4.5s \*  | 1,607 MB  | enwiki-latest-all-titles-in-ns0 |
+| [rust_radix_trie](https://github.com/michaelsproul/rust_radix_trie/)                  |   9.5s   | 7,920 MB  | enwiki-latest-all-titles-in-ns0 |
+| [qptrie](https://github.com/jedisct1/rust-qptrie/)                                    |    7s    | 2,241 MB  | enwiki-latest-all-titles-in-ns0 |
+| [patricia_tree](https://github.com/sile/patricia_tree/)                               |   20s    | 851 MB \* | enwiki-latest-all-titles-in-ns0 |
+| [fast_radix_trie](https://github.com/bluecatengineering/fast_radix_trie) (this crate) | 0.45s \* | 50 MB \*  |                     top-domains |
+| hashset                                                                               | 0.3s \*  |  108 MB   |                     top-domains |
+| btree                                                                                 |  0.48s   |   73 MB   |                     top-domains |
+| [rust_radix_trie](https://github.com/michaelsproul/rust_radix_trie/)                  |  1.03s   |  430 MB   |                     top-domains |
+| [qptrie](https://github.com/jedisct1/rust-qptrie/)                                    |  0.80s   |  115 MB   |                     top-domains |
+| [patricia_tree](https://github.com/sile/patricia_tree/)                               |  1.06s   | 46 MB \*  |                     top-domains |
 
 The only data structure to beat the insertion time is std HashSet but it takes almost twice as much memory for the top 1 million domains. For retrieving individual random values, the benches show `fast_radix_trie` on the order of ~150 ns, competitive with std lib.
 
