@@ -639,12 +639,11 @@ impl<V> Node<V> {
                 (0, Some(ord)) => {
                     // insert new root
                     // no common prefix, this only happens if we're at the root node
-                    let old_root: Node<V> = Node {
+                    let old_root = Node {
                         ptr: cur.ptr,
                         _marker: PhantomData,
                     };
                     let child = Node::new(key, [], Some(value));
-                    // figure out children and new child index
                     let children = if ord == Ordering::Greater {
                         [child, old_root]
                     } else {
@@ -660,9 +659,10 @@ impl<V> Node<V> {
                 (n, Some(_)) => {
                     // new child from common prefix that needs split at n
                     let (_, new_suffix) = unsafe { key.split_at_unchecked(n) };
-                    let new_child = Node::new(new_suffix, [], None);
-                    // get back index of new_child
-                    unsafe { cur.split_at(n, Some(new_child)) };
+                    let new_child = Node::new(new_suffix, [], Some(value));
+                    unsafe {
+                        cur.split_at(n, Some(new_child));
+                    }
                     return None;
                 }
                 (n, None) => {
@@ -674,6 +674,7 @@ impl<V> Node<V> {
                             return None;
                         }
                         Ordering::Equal => {
+                            // key and node are equal, replace data
                             let old_val = cur.take_value();
                             cur.set_value(value);
                             return old_val;
@@ -689,7 +690,8 @@ impl<V> Node<V> {
                                     continue;
                                 }
                                 None => {
-                                    // get insert index
+                                    // benchmarked a binary search and it's actually slower than sequential.
+                                    // Likely the max label size (255) makes branch misses not worth it.
                                     let insert_index = cur
                                         .children_first_bytes()
                                         .enumerate()
@@ -725,7 +727,6 @@ impl<V> Node<V> {
             }
         }
     }
-
     /// return node label length
     pub fn label_len(&self) -> usize {
         self.header().label_len as usize
