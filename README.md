@@ -61,10 +61,11 @@ dbg!(&map);
 //                  └─"s" (6)
 //      └─"box" (7)
 dbg!(&other);
-// &other = "appl" (-)
-//      ├─"e" (2)
-//            └─"sauce" (3)
-//      └─"y" (4)
+// &other = "" (-)
+//     └─"appl" (-)
+//         ├─"e" (2)
+//             └─"sauce" (3)
+//         └─"y" (4)
 
 // You can also use `common_prefixes` to return an iterator over all matching entries
 // as you traverse:
@@ -150,7 +151,7 @@ $ rev data/top-domain.txt | /usr/bin/time -f "# ELAPSED: %E\n# MEMORY: %M" cargo
 
 `cargo bench` results for insert/get/remove of random values, which is probably a worst case for a prefix matching data structure like a trie (Patricia is the `patricia_tree` crate):
 
-```
+```console
                                 [min       avg       max      ]
 insertion/RadixSet      time:   [246.95 ns 257.41 ns 266.66 ns]
 insertion/PatriciaSet   time:   [310.23 ns 355.22 ns 456.34 ns]
@@ -172,7 +173,7 @@ Comparison with cloudflare's [trie-hard](https://github.com/cloudflare/trie-hard
 
 for inserting the set of top 1 million domains reversed, this library is almost twice as fast as the others. (time is for adding all entries)
 
-```
+```console
 domains trie insert comparison/(ours) RadixSet insert*
                         time:   [569.11 ms 580.38 ms 591.60 ms]
 domains trie insert comparison/TrieHard insert
@@ -183,7 +184,7 @@ domains trie insert comparison/radix_trie::Trie insert
 
 get (times are for getting all 1 million entries)
 
-```
+```console
 domains trie get comparison/(ours) RadixSet get
                         time:   [448.71 ms 451.81 ms 455.01 ms]
 domains trie get comparison/TrieHard get*
@@ -194,7 +195,7 @@ domains trie get comparison/radix_trie::Trie get
 
 remove (times are for removing all 1 million entries). `trie-hard` doesn't have a `remove`
 
-```
+```console
 domains trie remove comparison/(ours) RadixSet remove*
                         time:   [882.75 ms 889.10 ms 895.61 ms]
 domains trie remove comparison/radix_trie::Trie remove

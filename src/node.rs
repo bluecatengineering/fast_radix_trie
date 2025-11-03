@@ -105,7 +105,7 @@ impl<V> Node<V> {
     }
 
     /// adds child at i and shifts elements right
-    /// node must have children already and i <= len
+    /// child index must be at i <= len, len can be 0
     pub(crate) unsafe fn add_child(&mut self, new_child: Node<V>, i: usize) {
         debug_assert!(
             i <= self.children_len(),

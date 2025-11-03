@@ -947,7 +947,7 @@ impl<'a, V: 'a> NodeMut<'a, V> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{RadixSet, StringRadixMap};
+    use crate::{RadixMap, RadixSet, StringRadixMap};
 
     #[test]
     fn root_works() {
@@ -1014,6 +1014,15 @@ mod tests {
 
     #[test]
     fn test_add_child() {
+        let mut root = Node::new(b"", [], None);
+        unsafe { root.add_child(Node::new(b"b", [], Some(2)), 0) };
+        // should shift children right
+        unsafe { root.add_child(Node::new(b"a", [], Some(1)), 0) };
+        assert_eq!(
+            root.children_first_bytes().collect::<Vec<_>>(),
+            vec![b'a', b'b']
+        );
+
         let child1 = Node::new(b"a", [], None);
         let mut parent = Node::new(b"parent", [child1], Some(100));
 
@@ -1848,7 +1857,12 @@ mod tests {
     #[test]
     fn test_split_by_prefix() {
         let mut root = create_bigger_test_tree();
-        // dbg!(&root);
+
+        let mut map = RadixMap::from_node(root.clone());
+        let other = map.split_by_prefix("ap");
+        dbg!(&map);
+        dbg!(&other);
+
         let other = root.split_by_prefix("ap").unwrap();
         dbg!(&root);
         dbg!(&other);
@@ -1893,7 +1907,7 @@ mod tests {
     #[test]
     fn test_common_prefixes_iter() {
         let root = create_bigger_test_tree();
-        // dbg!(&root);
+
         let ret = root
             .common_prefixes("applesauces")
             .map(|(_, n)| n.value())
@@ -1906,7 +1920,7 @@ mod tests {
         let mut root = Node::root();
         root.insert("a0/b0", 1);
         root.insert("a1/b1", 2);
-        // dbg!(&root);
+
         assert_eq!(root.get_prefix_node("b"), None);
         assert_eq!(root.get_prefix_node("b0"), None);
         assert_eq!(root.get_prefix_node("a0").unwrap().1.value().unwrap(), &1);
@@ -1933,7 +1947,7 @@ mod tests {
             root.insert("a1/b1", 2);
             root
         };
-        // dbg!(&root);
+
         let mut root = create();
         assert_eq!(root.split_by_prefix("b"), None);
         let mut root = create();

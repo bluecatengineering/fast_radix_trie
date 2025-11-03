@@ -49,10 +49,11 @@
 //! //                  └─"s" (6)
 //! //      └─"box" (7)
 //! dbg!(&other);
-//! // &other = "appl" (-)
-//! //      ├─"e" (2)
-//! //            └─"sauce" (3)
-//! //      └─"y" (4)
+//! // &other = "" (-)
+//! //     └─"appl" (-)
+//! //         ├─"e" (2)
+//! //             └─"sauce" (3)
+//! //         └─"y" (4)
 //!
 //! // You can also use `common_prefixes` to return an iterator over all matching entries
 //! // as you traverse:

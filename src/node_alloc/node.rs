@@ -121,7 +121,7 @@ impl<V> Node<V> {
         unsafe { self.ptr_data().take_value(self.ptr) }
     }
     /// adds child at i and shifts elements right
-    /// node must have children already and i <= len
+    /// child index must be at i <= len, len can be 0
     pub(crate) unsafe fn add_child(&mut self, new_child: Node<V>, i: usize) {
         debug_assert!(
             i <= self.children_len(),
@@ -141,9 +141,6 @@ impl<V> Node<V> {
             ptr_data: self.ptr_data(),
         };
         let value = self.take_value();
-
-        // dbg!(self.ptr_data().layout);
-        // dbg!(new_header.ptr_data::<V>().layout);
 
         unsafe {
             // update header value/label
