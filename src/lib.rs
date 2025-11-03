@@ -84,6 +84,7 @@ use core::cmp::Ordering;
 pub use map::{GenericRadixMap, RadixMap, StringRadixMap};
 pub use set::{GenericRadixSet, RadixSet, StringRadixSet};
 
+pub mod entry;
 pub mod map;
 pub mod set;
 
