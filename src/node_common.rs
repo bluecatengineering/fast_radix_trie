@@ -617,8 +617,12 @@ impl<V> Node<V> {
         self.entry(key, |entry| match entry {
             // modify found entry
             Some(cur) => {
+                // key matches but no value, take and modify or set
                 if let Some(v) = cur.value_mut() {
                     modify(v);
+                } else {
+                    // no value yet, insert it
+                    cur.set_value(insert());
                 }
                 None
             }

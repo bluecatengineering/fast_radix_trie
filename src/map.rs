@@ -1106,4 +1106,49 @@ mod tests {
 
         assert_eq!(unique_words.len(), trie.len());
     }
+
+    // insert big list of domains and make sure all entries are there
+    #[test]
+    #[ignore]
+    fn test_big_map_with() {
+        const TOP_MILLION: &str = include_str!("../data/top-domains.txt");
+
+        static DOMAINS_REV: LazyLock<Vec<String>> = LazyLock::new(|| {
+            TOP_MILLION
+                .split(|c: char| c.is_whitespace())
+                .collect::<HashSet<_>>()
+                .into_iter()
+                .map(|s| s.chars().rev().collect::<String>())
+                .collect()
+        });
+
+        fn get_domain_text() -> Vec<&'static str> {
+            DOMAINS_REV.iter().map(|s| s.as_str()).collect()
+        }
+
+        let words: Vec<&str> = get_domain_text();
+        let mut trie = RadixMap::new();
+        for (i, word) in words.iter().copied().enumerate() {
+            trie.insert_with_or_modify(
+                word,
+                || vec![i],
+                |v| {
+                    v.push(i);
+                },
+            );
+            // trie.insert(word, ());
+        }
+
+        let unique_words = words
+            .into_iter()
+            .collect::<HashSet<_>>()
+            .into_iter()
+            .collect::<Vec<_>>();
+
+        for word in &unique_words {
+            assert!(trie.get(word).is_some());
+        }
+
+        assert_eq!(unique_words.len(), trie.len());
+    }
 }
