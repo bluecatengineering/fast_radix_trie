@@ -614,19 +614,6 @@ impl<V> Node<V> {
     }
 
     /// insert key and value into node, replacing value if key exists
-    /// SAFETY:
-    /// caller must not insert an empty label into children. only the root node can have an empty label
-    // pub fn insert<K: ?Sized + BorrowedBytes>(&mut self, key: &K, value: V) -> Option<V> {
-    //     match self.entry(key) {
-    //         Entry::Occupied(mut e) => Some(e.insert(value)),
-    //         Entry::Vacant(e) => {
-    //             e.insert(value);
-    //             None
-    //         }
-    //     }
-    // }
-
-    /// insert key and value into node, replacing value if key exists
     /// could be re-written to use `Entry` but the non-entry version is 5-10% faster
     /// so I'm leaving this for now
     /// SAFETY:
