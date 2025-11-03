@@ -3,7 +3,7 @@ use core::fmt;
 use alloc::vec::Vec;
 
 use crate::{
-    BorrowedBytes, Bytes,
+    BorrowedBytes, Bytes, entry,
     node::Node,
     node_common::{self, NodeMut},
 };
@@ -44,21 +44,20 @@ impl<V> RadixTrie<V> {
             None
         }
     }
-    pub fn insert_with_or_modify<K, F, G>(&mut self, key: &K, insert: F, modify: G)
+
+    pub fn entry<K>(&mut self, key: &K) -> Entry<'_, V>
     where
         K: ?Sized + BorrowedBytes,
-        F: FnOnce() -> V,
-        G: for<'a> FnOnce(&'a mut V),
     {
-        self.root.insert_with_or_modify(
-            key,
-            || {
-                self.len += 1;
-                insert()
-            },
-            modify,
-        );
+        match self.root.entry(key) {
+            entry::Entry::Occupied(entry) => Entry::Occupied(OccupiedEntry { inner: entry }),
+            entry::Entry::Vacant(entry) => Entry::Vacant(VacantEntry {
+                inner: entry,
+                len: &mut self.len,
+            }),
+        }
     }
+
     pub fn get<K: ?Sized + BorrowedBytes>(&self, key: &K) -> Option<&V> {
         self.root.get(key)
     }
@@ -248,9 +247,152 @@ impl<V> Iterator for IntoNodes<V> {
     }
 }
 
+/// A view into a single entry in a map, which may either be vacant or occupied.
+///
+/// This `enum` is constructed from the `entry` method on `RadixTrie`.
+pub enum Entry<'a, V: 'a> {
+    /// An occupied entry.
+    Occupied(OccupiedEntry<'a, V>),
+    /// A vacant entry.
+    Vacant(VacantEntry<'a, V>),
+}
+
+/// A view into an occupied entry in a `RadixTrie`.
+/// It is part of the `Entry` enum.
+pub struct OccupiedEntry<'a, V: 'a> {
+    pub(crate) inner: entry::OccupiedEntry<'a, V>,
+}
+
+impl<'a, V: 'a> OccupiedEntry<'a, V> {
+    /// Gets a reference to the value in the entry
+    pub fn get(&self) -> &V {
+        // An occupied entry always has a value.
+        self.inner.node.value().unwrap()
+    }
+
+    /// Gets a mutable reference to the value in the entry
+    pub fn get_mut(&mut self) -> &mut V {
+        self.inner.node.value_mut().unwrap()
+    }
+}
+
+/// A view into a vacant entry in a `RadixTrie`.
+/// It is part of the `Entry` enum.
+pub struct VacantEntry<'a, V: 'a> {
+    pub(crate) inner: entry::VacantEntry<'a, V>,
+    /// A mutable reference to the trie's length, to be updated on insertion.
+    pub(crate) len: &'a mut usize,
+}
+
+impl<'a, V: 'a> VacantEntry<'a, V> {
+    /// Sets the value for the entry and returns a mutable reference to it.
+    ///
+    /// This increments the `RadixTrie`'s length.
+    pub fn insert(self, value: V) -> &'a mut V {
+        // Increment the trie's length.
+        *self.len += 1;
+        // Insert the value into the underlying node.
+        self.inner.insert(value)
+    }
+}
+
+// You can also implement `or_insert`, `and_modify`, etc. on the new `Entry` enum.
+impl<'a, V: 'a> Entry<'a, V> {
+    /// Ensures a value is in the entry by inserting the default if empty, and returns
+    /// a mutable reference to the value.
+    pub fn or_insert(self, default: V) -> &'a mut V {
+        match self {
+            Entry::Occupied(entry) => entry.inner.into_mut(),
+            Entry::Vacant(entry) => entry.insert(default),
+        }
+    }
+
+    /// Ensures a value is in the entry by inserting the result of the default function if empty,
+    /// and returns a mutable reference to the value.
+    pub fn or_insert_with<F: FnOnce() -> V>(self, default: F) -> &'a mut V {
+        match self {
+            Entry::Occupied(entry) => entry.inner.into_mut(),
+            Entry::Vacant(entry) => entry.insert(default()),
+        }
+    }
+
+    /// Provides in-place mutable access to an occupied entry.
+    pub fn and_modify<F: FnOnce(&mut V)>(self, f: F) -> Self {
+        match self {
+            Entry::Occupied(mut entry) => {
+                f(entry.inner.get_mut());
+                Entry::Occupied(entry)
+            }
+            Entry::Vacant(entry) => Entry::Vacant(entry),
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_entry_api() {
+        let mut tree = RadixTrie::new();
+
+        // Test `or_insert` on a vacant entry
+        let val = tree.entry("a").or_insert(10);
+        assert_eq!(*val, 10);
+        assert_eq!(tree.len(), 1);
+        assert_eq!(tree.get("a"), Some(&10));
+
+        // Test `or_insert` on an occupied entry
+        let val = tree.entry("a").or_insert(99); // Should not insert
+        assert_eq!(*val, 10); // Returns reference to existing value
+
+        // Modify through the returned reference
+        *val = 11;
+
+        assert_eq!(tree.len(), 1); // Length does not change
+        assert_eq!(tree.get("a"), Some(&11));
+
+        // Test `or_insert_with` on a vacant entry
+        let mut closure_called = false;
+        tree.entry("b").or_insert_with(|| {
+            closure_called = true;
+            20
+        });
+        assert!(closure_called);
+        assert_eq!(tree.len(), 2);
+        assert_eq!(tree.get("b"), Some(&20));
+
+        // Test `or_insert_with` on an occupied entry
+        tree.entry("b")
+            .or_insert_with(|| panic!("closure should not be called"));
+        assert_eq!(tree.len(), 2);
+
+        // Test `and_modify` on an occupied entry
+        let mut modify_closure_called = false;
+        tree.entry("b").and_modify(|v| {
+            *v += 5;
+            modify_closure_called = true;
+        });
+        assert!(modify_closure_called);
+        assert_eq!(tree.get("b"), Some(&25));
+
+        // Test `and_modify` on a vacant entry
+        tree.entry("c")
+            .and_modify(|_| panic!("closure should not be called"));
+
+        // Test chaining `and_modify` and `or_insert`
+        // On an occupied entry:
+        tree.entry("b").and_modify(|v| *v = 30).or_insert(99); // This part is ignored
+        assert_eq!(tree.get("b"), Some(&30));
+        assert_eq!(tree.len(), 2);
+
+        // On a vacant entry:
+        tree.entry("c")
+            .and_modify(|_| panic!("closure should not be called"))
+            .or_insert(40); // This part is executed
+        assert_eq!(tree.get("c"), Some(&40));
+        assert_eq!(tree.len(), 3);
+    }
 
     #[test]
     fn it_works() {

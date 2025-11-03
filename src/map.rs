@@ -261,31 +261,39 @@ impl<K: Bytes, V> GenericRadixMap<K, V> {
     pub fn insert<Q: AsRef<K::Borrowed>>(&mut self, key: Q, value: V) -> Option<V> {
         self.tree.insert(key.as_ref(), value)
     }
-
-    /// Inserts a key-value pair into this map with closure, or modify existing value
+    /// Gets a view into a single entry in the map, which may either be vacant or occupied.
     ///
-    /// If the map did not have this key present, `None` is returned.
-    /// If the map did have this key present, the value is updated, and the old value is returned.
+    /// This is the most efficient way to insert a value into the map when you are not sure
+    /// if the key is already present.
     ///
     /// # Examples
     ///
     /// ```
     /// use fast_radix_trie::RadixMap;
     ///
-    /// let mut map = RadixMap::new();
-    /// map.insert_with_or_modify("foo", || vec![1], |v| v.push(2));
-    /// map.insert_with_or_modify("foo", || vec![1], |v| v.push(2));
-    /// assert_eq!(map.get("foo"), Some(&vec![1, 2]));
+    /// let mut map: RadixMap<u32> = RadixMap::new();
+    ///
+    /// // A key that is not present.
+    /// map.entry("poneyland").or_insert(12);
+    /// assert_eq!(map.get("poneyland"), Some(&12));
+    ///
+    /// // A key that is present.
+    /// map.entry("poneyland").or_insert_with(|| 99);
+    /// assert_eq!(map.get("poneyland"), Some(&12)); // Value is not updated.
+    ///
+    /// // Modify an existing value.
+    /// map.entry("poneyland").and_modify(|v| *v += 1);
+    /// assert_eq!(map.get("poneyland"), Some(&13));
+    ///
+    /// // Insert if vacant, otherwise do nothing.
+    /// map.entry("poneyland").or_insert(1); // Does nothing.
+    /// map.entry("fluttershy").or_insert(2); // Inserts 2.
+    /// assert_eq!(map.len(), 2);
     /// ```
-    pub fn insert_with_or_modify<Q, F, G>(&mut self, key: Q, insert: F, modify: G)
-    where
-        Q: AsRef<K::Borrowed>,
-        F: FnOnce() -> V,
-        G: for<'a> FnOnce(&'a mut V),
-    {
-        self.tree
-            .insert_with_or_modify(key.as_ref(), insert, modify);
+    pub fn entry<Q: AsRef<K::Borrowed>>(&mut self, key: Q) -> tree::Entry<'_, V> {
+        self.tree.entry(key.as_ref())
     }
+
     /// Removes a key from this map, returning the value at the key if the key was previously in it.
     ///
     /// # Examples
@@ -1128,14 +1136,13 @@ mod tests {
 
         let words: Vec<&str> = get_domain_text();
         let mut trie = RadixMap::new();
+
         for (i, word) in words.iter().copied().enumerate() {
-            trie.insert_with_or_modify(
-                word,
-                || vec![i],
-                |v| {
+            trie.entry(word)
+                .and_modify(|v: &mut Vec<usize>| {
                     v.push(i);
-                },
-            );
+                })
+                .or_insert_with(|| vec![i]);
             // trie.insert(word, ());
         }
 
