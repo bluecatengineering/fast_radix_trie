@@ -314,7 +314,11 @@ impl<V> Node<V> {
         }
     }
 
-    pub(crate) unsafe fn split_at(&mut self, position: usize, new_child: Option<Node<V>>) {
+    /// split current label at position, moving all current children to suffix node
+    /// and setting current node to have the suffix child plus optional `new_child`
+    /// returns index of new_child (if Some(new_child) was passed)
+    /// otherwise 0
+    pub(crate) unsafe fn split_at(&mut self, position: usize, new_child: Option<Node<V>>) -> usize {
         debug_assert!(
             position < self.label_len(),
             "label offset must be within label bounds"
@@ -367,13 +371,17 @@ impl<V> Node<V> {
         };
         unsafe {
             new_ptr.write_header(new_hdr);
+            // index of new_child
+            let mut idx = 0;
             if let Some(new_child) = new_child {
                 let children = {
                     let suffix_first = some!(child.label().first());
                     let new_child_first = some!(new_child.label().first());
                     if new_child_first < suffix_first {
+                        idx = 0;
                         [new_child, child]
                     } else {
+                        idx = 1;
                         [child, new_child]
                     }
                 };
@@ -385,6 +393,7 @@ impl<V> Node<V> {
             new_ptr.write_value(None);
             // re-assign ptr to avoid Drop of old children
             self.ptr = new_ptr.assume_init().into_ptr_forget();
+            idx
         }
     }
 }

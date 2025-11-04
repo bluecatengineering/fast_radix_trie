@@ -83,6 +83,15 @@ assert!(t
     .map(|(_, v)| v)
     .flatten()
     .eq(vec![&"a", &"b", &"c", &"d"].into_iter()));
+
+assert_eq!(
+    t.entry("ab")
+        .and_modify(|v| {
+            v.push("g");
+        })
+        .or_insert_with(Vec::new),
+    &vec!["b", "g"]
+);
 ```
 
 ## Differences with patricia_tree

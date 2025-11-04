@@ -1,5 +1,5 @@
 //! node common methods
-use crate::{BorrowedBytes, Bytes, Node, NodeHeader, NodePtrAndData, PtrData};
+use crate::{BorrowedBytes, Bytes, Node, NodeHeader, NodePtrAndData, PtrData, entry::*};
 use alloc::{collections::VecDeque, string::String, vec::Vec};
 use core::{cmp::Ordering, fmt, marker::PhantomData, mem};
 
@@ -502,14 +502,11 @@ impl<V> Node<V> {
         self.ptr = child.into_ptr_forget();
     }
 
-    /// insert with a function call or modify the existing entry
-    // INVARIANT: f(None) will be called when no value is found, **it must always return a value**
-    // f(Some(&mut cur)) is only called when we find an entry
-    #[inline(always)]
-    fn entry<K, F>(&mut self, key: &K, f: F) -> Option<V>
+    /// entry api for node
+    #[inline]
+    pub fn entry<K>(&mut self, key: &K) -> Entry<'_, V>
     where
         K: ?Sized + BorrowedBytes,
-        F: for<'a> FnOnce(Option<&'a mut Node<V>>) -> Option<V>,
     {
         let mut cur = self;
         let mut key = key.as_bytes();
@@ -518,45 +515,51 @@ impl<V> Node<V> {
                 (0, Some(ord)) => {
                     // insert new root
                     // no common prefix, this only happens if we're at the root node
-                    let old_root = Node {
+                    let old_root: Node<V> = Node {
                         ptr: cur.ptr,
                         _marker: PhantomData,
                     };
-                    let child = Node::new(key, [], f(None));
-                    let children = if ord == Ordering::Greater {
-                        [child, old_root]
+                    let child = Node::new(key, [], None);
+                    // figure out children and new child index
+                    let (children, idx) = if ord == Ordering::Greater {
+                        ([child, old_root], 0)
                     } else {
-                        [old_root, child]
+                        ([old_root, child], 1)
                     };
                     let new_root = Node::new(b"", children, None);
                     // swap out current root for new root w/ children
                     cur.ptr = new_root.ptr;
                     mem::forget(new_root);
 
-                    return None;
+                    return Entry::Vacant(VacantEntry {
+                        node: unsafe { cur.children_mut().get_unchecked_mut(idx) },
+                    });
                 }
                 (n, Some(_)) => {
                     // new child from common prefix that needs split at n
                     let (_, new_suffix) = unsafe { key.split_at_unchecked(n) };
-                    let new_child = Node::new(new_suffix, [], f(None));
-                    unsafe {
-                        cur.split_at(n, Some(new_child));
-                    }
-                    return None;
+                    let new_child = Node::new(new_suffix, [], None);
+                    // get back index of new_child
+                    let idx = unsafe { cur.split_at(n, Some(new_child)) };
+                    return Entry::Vacant(VacantEntry {
+                        // return new_child as current node so caller can insert
+                        node: unsafe { cur.children_mut().get_unchecked_mut(idx) },
+                    });
                 }
                 (n, None) => {
                     // new child needed but next element doesn't exist
                     match key.len().cmp(&cur.label_len()) {
                         Ordering::Less => {
-                            // f(None) must always return a value
-                            if let Some(val) = f(None) {
-                                unsafe { cur.split_at(key.len(), None) };
-                                cur.set_value(val);
-                            }
-                            return None;
+                            unsafe { cur.split_at(key.len(), None) };
+                            // cur.set_value(val);
+                            return Entry::Vacant(VacantEntry { node: cur });
                         }
                         Ordering::Equal => {
-                            return f(Some(cur));
+                            return if cur.value().is_some() {
+                                Entry::Occupied(OccupiedEntry { node: cur })
+                            } else {
+                                Entry::Vacant(VacantEntry { node: cur })
+                            };
                         }
                         Ordering::Greater => {
                             // prefix match but key is longer, so we need to insert into a child
@@ -590,7 +593,113 @@ impl<V> Node<V> {
                                         continue;
                                     } else {
                                         // we now have index of where we can insert
-                                        let child = Node::new(key, [], f(None));
+                                        let child = Node::new(key, [], None);
+                                        // SAFETY: insert_index must be <= children len
+                                        unsafe {
+                                            cur.add_child(child, insert_index);
+                                        }
+                                        return Entry::Vacant(VacantEntry {
+                                            node: unsafe {
+                                                cur.children_mut().get_unchecked_mut(insert_index)
+                                            },
+                                        });
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    /// insert key and value into node, replacing value if key exists
+    /// could be re-written to use `Entry` but the non-entry version is 5-10% faster
+    /// so I'm leaving this for now
+    /// SAFETY:
+    /// caller must not insert an empty label into children. only the root node can have an empty label
+    pub fn insert<K: ?Sized + BorrowedBytes>(&mut self, key: &K, value: V) -> Option<V> {
+        let mut cur = self;
+        let mut key = key.as_bytes();
+        loop {
+            match crate::longest_common_prefix(cur.label(), key) {
+                (0, Some(ord)) => {
+                    // insert new root
+                    // no common prefix, this only happens if we're at the root node
+                    let old_root = Node {
+                        ptr: cur.ptr,
+                        _marker: PhantomData,
+                    };
+                    let child = Node::new(key, [], Some(value));
+                    let children = if ord == Ordering::Greater {
+                        [child, old_root]
+                    } else {
+                        [old_root, child]
+                    };
+                    let new_root = Node::new(b"", children, None);
+                    // swap out current root for new root w/ children
+                    cur.ptr = new_root.ptr;
+                    mem::forget(new_root);
+
+                    return None;
+                }
+                (n, Some(_)) => {
+                    // new child from common prefix that needs split at n
+                    let (_, new_suffix) = unsafe { key.split_at_unchecked(n) };
+                    let new_child = Node::new(new_suffix, [], Some(value));
+                    unsafe {
+                        cur.split_at(n, Some(new_child));
+                    }
+                    return None;
+                }
+                (n, None) => {
+                    // new child needed but next element doesn't exist
+                    match key.len().cmp(&cur.label_len()) {
+                        Ordering::Less => {
+                            unsafe { cur.split_at(key.len(), None) };
+                            cur.set_value(value);
+                            return None;
+                        }
+                        Ordering::Equal => {
+                            // key and node are equal, replace data
+                            let old_val = cur.take_value();
+                            cur.set_value(value);
+                            return old_val;
+                        }
+                        Ordering::Greater => {
+                            // prefix match but key is longer, so we need to insert into a child
+                            key = unsafe { key.get_unchecked(cur.label_len()..) };
+                            let first_byte = key[0];
+                            match cur.child_index_with_first(first_byte) {
+                                Some(i) => {
+                                    // SAFETY: we just checked i is in range
+                                    cur = unsafe { cur.children_mut().get_unchecked_mut(i) };
+                                    continue;
+                                }
+                                None => {
+                                    // benchmarked a binary search and it's actually slower than sequential.
+                                    // Likely the max label size (255) makes branch misses not worth it.
+                                    let insert_index = cur
+                                        .children_first_bytes()
+                                        .enumerate()
+                                        .find(|(_, b)| *b >= first_byte)
+                                        .map(|(i, _)| i)
+                                        .unwrap_or(cur.children_len());
+
+                                    // if key is bigger than max len and there's no common prefix
+                                    // or the previous length was 255, we need to split off
+                                    // the first chunk and chain the labels together
+                                    if (n == 0 || n == MAX_LABEL_LEN) && key.len() > MAX_LABEL_LEN {
+                                        let child: Node<V> =
+                                            Node::new(&key[..MAX_LABEL_LEN], [], None);
+                                        unsafe {
+                                            cur.add_child(child, insert_index);
+                                            cur = cur.children_mut().get_unchecked_mut(insert_index)
+                                        }
+                                        continue;
+                                    } else {
+                                        // we now have index of where we can insert
+                                        let child = Node::new(key, [], Some(value));
                                         // SAFETY: insert_index must be <= children len
                                         unsafe {
                                             cur.add_child(child, insert_index);
@@ -605,48 +714,6 @@ impl<V> Node<V> {
             }
         }
     }
-
-    /// insert with a function call or modify the existing entry
-    pub fn insert_with_or_modify<K, F, G>(&mut self, key: &K, insert: F, modify: G)
-    where
-        K: ?Sized + BorrowedBytes,
-        F: FnOnce() -> V,
-        // lifetime polymorphic
-        G: for<'a> FnOnce(&'a mut V),
-    {
-        self.entry(key, |entry| match entry {
-            // modify found entry
-            Some(cur) => {
-                // key matches but no value, take and modify or set
-                if let Some(v) = cur.value_mut() {
-                    modify(v);
-                } else {
-                    // no value yet, insert it
-                    cur.set_value(insert());
-                }
-                None
-            }
-            // insert new if not found
-            None => Some(insert()),
-        });
-    }
-
-    /// insert key and value into node, replacing value if key exists
-    /// SAFETY:
-    /// caller must not insert an empty label into children. only the root node can have an empty label
-    pub fn insert<K: ?Sized + BorrowedBytes>(&mut self, key: &K, value: V) -> Option<V> {
-        self.entry(key, |entry| match entry {
-            Some(cur) => {
-                // swap value if we found the entry
-                let old_val = cur.take_value();
-                cur.set_value(value);
-                old_val
-            }
-            // insert new value if not found
-            None => Some(value),
-        })
-    }
-
     /// return node label length
     pub fn label_len(&self) -> usize {
         self.header().label_len as usize
@@ -1144,41 +1211,36 @@ mod tests {
 
         // modify
         let mut modify_called = false;
-        root.insert_with_or_modify(
-            "test",
-            || panic!("insert should not be called"),
-            |v| {
+        root.entry("test")
+            .and_modify(|v| {
                 *v += 5;
                 modify_called = true;
-            },
-        );
+            })
+            .or_insert_with(|| panic!("insert should not be called"));
+
         assert!(modify_called);
         assert_eq!(root.get("test"), Some(&15));
 
         // insert new
         let mut insert_called = false;
-        root.insert_with_or_modify(
-            "new_key",
-            || {
+        root.entry("new_key")
+            .and_modify(|_| panic!("modified"))
+            .or_insert_with(|| {
                 insert_called = true;
                 100
-            },
-            |_| panic!("modify should not be called"),
-        );
+            });
         assert!(insert_called);
         assert_eq!(root.get("new_key"), Some(&100));
 
         root.insert("apple", 1);
         // create intermediate node "appl"
         let mut insert_called_on_prefix = false;
-        root.insert_with_or_modify(
-            "appl",
-            || {
+        root.entry("appl")
+            .and_modify(|_| panic!("modify called"))
+            .or_insert_with(|| {
                 insert_called_on_prefix = true;
                 99
-            },
-            |_| panic!("modify should not be called on a node without a value"),
-        );
+            });
         assert!(insert_called_on_prefix);
         assert_eq!(root.get("appl"), Some(&99));
     }
@@ -1188,31 +1250,25 @@ mod tests {
         let mut root: Node<Vec<u32>> = Node::root();
 
         // insert() a new key
-        root.insert_with_or_modify(
-            "counts",
-            || vec![0], // Create a new vector with one element.
-            |_| panic!("modify should not be called on insert"),
-        );
+        root.entry("counts")
+            .and_modify(|_| panic!("modified"))
+            .or_insert_with(
+                || vec![0], // Create a new vector with one element.
+            );
         assert_eq!(root.get("counts"), Some(&vec![0]));
 
         // modify() the existing key
-        root.insert_with_or_modify(
-            "counts",
-            || panic!("insert should not be called on modify"),
-            |v| {
-                v.push(1); // Push a new element into the existing vector.
-            },
-        );
+        root.entry("counts")
+            .and_modify(|v| v.push(1))
+            .or_insert_with(|| panic!("insert should not be called on modify"));
         assert_eq!(root.get("counts"), Some(&vec![0, 1]));
 
         // modify()
-        root.insert_with_or_modify(
-            "counts",
-            || panic!("insert should not be called on modify"),
-            |v| {
+        root.entry("counts")
+            .and_modify(|v| {
                 v.push(2);
-            },
-        );
+            })
+            .or_insert_with(|| panic!("insert should not be called on modify"));
         // created with 0 then pushed 1, 2
         assert_eq!(root.get("counts"), Some(&vec![0, 1, 2]));
     }

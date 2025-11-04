@@ -71,6 +71,15 @@
 //!     .map(|(_, v)| v)
 //!     .flatten()
 //!     .eq(vec![&"a", &"b", &"c", &"d"].into_iter()));
+//!
+//! assert_eq!(
+//!     t.entry("ab")
+//!         .and_modify(|v| {
+//!             v.push("g");
+//!         })
+//!         .or_insert_with(Vec::new),
+//!     &vec!["b", "g"]
+//! );
 //! ```
 #![warn(missing_docs)]
 #![cfg_attr(not(any(feature = "std", test)), no_std)]
@@ -84,6 +93,7 @@ use core::cmp::Ordering;
 pub use map::{GenericRadixMap, RadixMap, StringRadixMap};
 pub use set::{GenericRadixSet, RadixSet, StringRadixSet};
 
+pub mod entry;
 pub mod map;
 pub mod set;
 
