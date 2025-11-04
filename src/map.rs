@@ -932,6 +932,15 @@ mod tests {
             .cloned()
             .collect::<Vec<_>>();
         assert!(results.iter().eq(vec![&"a", &"b", &"c", &"d"].into_iter()));
+
+        assert_eq!(
+            t.entry("ab")
+                .and_modify(|v| {
+                    v.push("g");
+                })
+                .or_insert_with(Vec::new),
+            &vec!["b", "g"]
+        );
     }
 
     #[test]
