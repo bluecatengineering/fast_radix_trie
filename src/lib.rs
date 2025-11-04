@@ -1,9 +1,15 @@
-//! Memory-efficient data structures based on patricia tree (a.k.a, radix tree).
+//! Memory-efficient trie data structures based on radix tree.
 //!
-//! A common prefixes of the keys in a patricia tree are represented by a shared path.
-//! So if the prefixes of the key set is highly redundant,
-//! the memory usage of the resulting patricia tree will be drastically less than
-//! more generic data structures (e.g., `BTreeMap`).
+//! A radix tree compresses nodes such that common prefixes are shared.
+//! This minimizes memory usage for storing large sets of strings/bytes.
+//! Additionally, this library optimizes memory layout/padding to further
+//! reduce memory consumption, leading to significant memory savings and
+//! fast traversal time for large data sets.
+//!
+//! `fast_radix_trie` has a benchmark suite run against std's HashMap/BTreeMap
+//! and other popular rust trie libraries, and `fast_radix_trie`
+//! seems to use (much) less memory than most while also being
+//! faster or on par for insert/remove/retrieve operations.
 //!
 //! See [Radix tree](https://en.wikipedia.org/wiki/Radix_tree) for more details.
 //!
