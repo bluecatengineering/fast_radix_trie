@@ -76,10 +76,6 @@ pub struct VacantEntry<'a, V: 'a> {
 }
 
 impl<'a, V: 'a> VacantEntry<'a, V> {
-    /// Sets the value for the entry.
-    // pub fn insert(self, value: V) {
-    //     self.node.set_value(value);
-    // }
     /// Sets the value for the entry and returns a mutable reference to it.
     pub fn insert(self, value: V) -> &'a mut V {
         self.node.set_value(value);
