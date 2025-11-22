@@ -363,7 +363,7 @@ impl<V> Node<V> {
         let mut matched_len = 0;
 
         loop {
-            let (offset, _next) = crate::longest_common_prefix(key, cur.label());
+            let (offset, _next) = crate::lcp_by4(key, cur.label());
             key = &key[offset..];
             matched_len += offset;
 
@@ -511,7 +511,7 @@ impl<V> Node<V> {
         let mut cur = self;
         let mut key = key.as_bytes();
         loop {
-            match crate::longest_common_prefix(cur.label(), key) {
+            match crate::lcp_by4(cur.label(), key) {
                 (n, Some(_)) => {
                     // new child from common prefix that needs split at n
                     let (_, new_suffix) = unsafe { key.split_at_unchecked(n) };
@@ -599,7 +599,7 @@ impl<V> Node<V> {
         let mut cur = self;
         let mut key = key.as_bytes();
         loop {
-            match crate::longest_common_prefix(cur.label(), key) {
+            match crate::lcp_by4(cur.label(), key) {
                 (n, Some(_)) => {
                     // new child from common prefix that needs split at n
                     let (_, new_suffix) = unsafe { key.split_at_unchecked(n) };

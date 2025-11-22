@@ -222,37 +222,43 @@ pub fn longest_common_prefix_by_byte(a: &[u8], b: &[u8]) -> (usize, Option<Order
     (i, cmp)
 }
 
-/// returns index of where a & b differ, and the ordering of the differing bit
-/// otherwise returns None
-#[inline(always)]
-pub fn longest_common_prefix(a: &[u8], b: &[u8]) -> (usize, Option<Ordering>) {
-    // chunks of 4
-    const CHUNK: usize = (u32::BITS / 8) as usize;
-    let min_len = core::cmp::min(a.len(), b.len());
+macro_rules! fn_lcp {
+    ($ty:ty, $name:ident) => {
+        /// returns longest common prefix with index of where a & b differ, and the ordering of the differing bit
+        /// otherwise returns None
+        #[inline(always)]
+        pub fn $name(a: &[u8], b: &[u8]) -> (usize, Option<Ordering>) {
+            const CHUNK_LEN: usize = (<$ty>::BITS / 8) as usize;
+            let min_len = core::cmp::min(a.len(), b.len());
 
-    let mut i = 0;
-    // go through 4 bytes at a time
-    for (a_chunk, b_chunk) in a.chunks_exact(CHUNK).zip(b.chunks_exact(CHUNK)) {
-        let ax = u32::from_ne_bytes(a_chunk.try_into().ok().unwrap());
-        let bx = u32::from_ne_bytes(b_chunk.try_into().ok().unwrap());
+            let mut i = 0;
+            // go through CHUNK_LEN bytes at a time
+            for (a_chunk, b_chunk) in a.chunks_exact(CHUNK_LEN).zip(b.chunks_exact(CHUNK_LEN)) {
+                let ax = <$ty>::from_ne_bytes(a_chunk.try_into().ok().unwrap());
+                let bx = <$ty>::from_ne_bytes(b_chunk.try_into().ok().unwrap());
 
-        if ax != bx {
-            // find byte diff
-            let diff = i + ((ax ^ bx).trailing_zeros() / 8) as usize;
-            return (diff, Some(a[diff].cmp(&b[diff])));
+                if ax != bx {
+                    // find byte diff
+                    let diff = i + ((ax ^ bx).trailing_zeros() / 8) as usize;
+                    return (diff, Some(a[diff].cmp(&b[diff])));
+                }
+                i += CHUNK_LEN;
+            }
+            // process remaining bytes less than CHUNK_LEN - one at a time
+            while i < min_len {
+                if a[i] != b[i] {
+                    return (i, Some(a[i].cmp(&b[i])));
+                }
+                i += 1;
+            }
+
+            (i, None)
         }
-        i += CHUNK;
-    }
-    // process remaining bytes less than 4 - one at a time
-    while i < min_len {
-        if a[i] != b[i] {
-            return (i, Some(a[i].cmp(&b[i])));
-        }
-        i += 1;
-    }
-
-    (i, None)
+    };
 }
+
+fn_lcp!(u32, lcp_by4);
+fn_lcp!(u64, lcp_by8);
 
 #[cfg(test)]
 mod test {
@@ -262,25 +268,25 @@ mod test {
     fn test_longest_common_prefix() {
         // short common prefix
         assert_eq!(
-            longest_common_prefix(b"123456789", b"1234abcdef"),
+            lcp_by4(b"123456789", b"1234abcdef"),
             (4, Some(Ordering::Less))
         );
         assert_eq!(
-            longest_common_prefix_by_byte(b"123456789", b"1234abcdef"),
+            lcp_by4(b"123456789", b"1234abcdef"),
             (4, Some(Ordering::Less))
         );
         // short common prefix
         assert_eq!(
-            longest_common_prefix(b"123456789", b"12345abcdef"),
+            lcp_by4(b"123456789", b"12345abcdef"),
             (5, Some(Ordering::Less))
         );
         assert_eq!(
-            longest_common_prefix_by_byte(b"123456789", b"12345abcdef"),
+            lcp_by4(b"123456789", b"12345abcdef"),
             (5, Some(Ordering::Less))
         );
         // long common prefix
         assert_eq!(
-            longest_common_prefix(
+            lcp_by4(
                 b"1234444444444444444444444456789",
                 b"12344444444444444444444444a"
             ),
@@ -294,27 +300,24 @@ mod test {
             (26, Some(Ordering::Less))
         );
         // both empty
-        assert_eq!(longest_common_prefix(b"", b""), (0, None));
+        assert_eq!(lcp_by4(b"", b""), (0, None));
         assert_eq!(longest_common_prefix_by_byte(b"", b""), (0, None));
         // no common prefix -- min_len == 0
-        assert_eq!(longest_common_prefix(b"123", b""), (0, None));
+        assert_eq!(lcp_by4(b"123", b""), (0, None));
         assert_eq!(longest_common_prefix_by_byte(b"123", b""), (0, None));
         // no common prefix but both have bytes
-        assert_eq!(
-            longest_common_prefix(b"foobar", b"notfoobar"),
-            (0, Some(Ordering::Less))
-        );
+        assert_eq!(lcp_by4(b"foobar", b"notfoobar"), (0, Some(Ordering::Less)));
         assert_eq!(
             longest_common_prefix_by_byte(b"foobar", b"notfoobar"),
             (0, Some(Ordering::Less))
         );
         // 8 byte len not prefixed
-        assert_eq!(longest_common_prefix(b"000000001", b"00000000"), (8, None));
+        assert_eq!(lcp_by4(b"000000001", b"00000000"), (8, None));
         assert_eq!(
             longest_common_prefix_by_byte(b"000000001", b"00000000"),
             (8, None)
         );
         // both are equal
-        assert_eq!(longest_common_prefix(b"000000001", b"000000001"), (9, None));
+        assert_eq!(lcp_by4(b"000000001", b"000000001"), (9, None));
     }
 }
