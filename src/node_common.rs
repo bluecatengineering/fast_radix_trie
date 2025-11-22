@@ -1,7 +1,7 @@
 //! node common methods
 use crate::{BorrowedBytes, Bytes, Node, NodeHeader, NodePtrAndData, PtrData, entry::*};
 use alloc::{collections::VecDeque, string::String, vec::Vec};
-use core::{cmp::Ordering, fmt, marker::PhantomData, mem};
+use core::{cmp::Ordering, fmt};
 
 macro_rules! some {
     ($expr:expr) => {
@@ -363,7 +363,7 @@ impl<V> Node<V> {
         let mut matched_len = 0;
 
         loop {
-            let (offset, _next) = crate::longest_common_prefix(key, cur.label());
+            let (offset, _next) = crate::lcp_by4(key, cur.label());
             key = &key[offset..];
             matched_len += offset;
 
@@ -511,30 +511,7 @@ impl<V> Node<V> {
         let mut cur = self;
         let mut key = key.as_bytes();
         loop {
-            match crate::longest_common_prefix(cur.label(), key) {
-                (0, Some(ord)) => {
-                    // insert new root
-                    // no common prefix, this only happens if we're at the root node
-                    let old_root: Node<V> = Node {
-                        ptr: cur.ptr,
-                        _marker: PhantomData,
-                    };
-                    let child = Node::new(key, [], None);
-                    // figure out children and new child index
-                    let (children, idx) = if ord == Ordering::Greater {
-                        ([child, old_root], 0)
-                    } else {
-                        ([old_root, child], 1)
-                    };
-                    let new_root = Node::new(b"", children, None);
-                    // swap out current root for new root w/ children
-                    cur.ptr = new_root.ptr;
-                    mem::forget(new_root);
-
-                    return Entry::Vacant(VacantEntry {
-                        node: unsafe { cur.children_mut().get_unchecked_mut(idx) },
-                    });
-                }
+            match crate::lcp_by4(cur.label(), key) {
                 (n, Some(_)) => {
                     // new child from common prefix that needs split at n
                     let (_, new_suffix) = unsafe { key.split_at_unchecked(n) };
@@ -622,27 +599,7 @@ impl<V> Node<V> {
         let mut cur = self;
         let mut key = key.as_bytes();
         loop {
-            match crate::longest_common_prefix(cur.label(), key) {
-                (0, Some(ord)) => {
-                    // insert new root
-                    // no common prefix, this only happens if we're at the root node
-                    let old_root = Node {
-                        ptr: cur.ptr,
-                        _marker: PhantomData,
-                    };
-                    let child = Node::new(key, [], Some(value));
-                    let children = if ord == Ordering::Greater {
-                        [child, old_root]
-                    } else {
-                        [old_root, child]
-                    };
-                    let new_root = Node::new(b"", children, None);
-                    // swap out current root for new root w/ children
-                    cur.ptr = new_root.ptr;
-                    mem::forget(new_root);
-
-                    return None;
-                }
+            match crate::lcp_by4(cur.label(), key) {
                 (n, Some(_)) => {
                     // new child from common prefix that needs split at n
                     let (_, new_suffix) = unsafe { key.split_at_unchecked(n) };
@@ -714,6 +671,7 @@ impl<V> Node<V> {
             }
         }
     }
+
     /// return node label length
     pub fn label_len(&self) -> usize {
         self.header().label_len as usize
@@ -1421,6 +1379,9 @@ mod tests {
         assert_eq!(node.get_node(&[b'1'; 240]).unwrap().label_len(), 239);
         // 260 - 240 = 20
         assert_eq!(node.get_node(&label).unwrap().label_len(), 20);
+
+        assert_eq!(node.remove(&label[..]), Some(6));
+        assert_eq!(node.remove(&[b'1'; 240]), Some(5));
     }
 
     #[test]
@@ -1912,6 +1873,18 @@ mod tests {
         assert_eq!(node_a.value(), Some(&10));
         assert_eq!(node_a.children_len(), 1);
         assert_eq!(node_a.children()[0].label(), b"b");
+    }
+
+    #[test]
+    fn test_root() {
+        // test creation of new root where nothing matches
+        let mut root = Node::new(b"notfoobar", [], Some(1));
+        root.insert(b"foobar", 1);
+        // makes child "baz" under "foobar"
+        root.insert(b"foobarbaz", 3);
+        assert_eq!(root.label_len(), 0);
+        assert_eq!(root.children()[0].label(), b"foobar");
+        assert_eq!(root.children()[1].label(), b"notfoobar");
     }
 
     #[test]

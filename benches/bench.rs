@@ -14,7 +14,16 @@ fn bench_longest_common_prefix(c: &mut Criterion) {
 
     group.bench_function("LCP by 4 bytes", |b| {
         b.iter(|| {
-            fast_radix_trie::longest_common_prefix(
+            fast_radix_trie::lcp_by4(
+                black_box(b"abcdefghijklmnopqrstuvwxyz123"),
+                black_box(b"abcdefghijklmnopqrstuvwxyzabc"),
+            );
+        })
+    });
+
+    group.bench_function("LCP by 8 bytes", |b| {
+        b.iter(|| {
+            fast_radix_trie::lcp_by8(
                 black_box(b"abcdefghijklmnopqrstuvwxyz123"),
                 black_box(b"abcdefghijklmnopqrstuvwxyzabc"),
             );
