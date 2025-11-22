@@ -226,6 +226,7 @@ pub fn longest_common_prefix_by_byte(a: &[u8], b: &[u8]) -> (usize, Option<Order
 /// otherwise returns None
 #[inline(always)]
 pub fn longest_common_prefix(a: &[u8], b: &[u8]) -> (usize, Option<Ordering>) {
+    // chunks of 4
     const CHUNK: usize = (u32::BITS / 8) as usize;
     let min_len = core::cmp::min(a.len(), b.len());
 
