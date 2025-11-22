@@ -1880,6 +1880,8 @@ mod tests {
         // test creation of new root where nothing matches
         let mut root = Node::new(b"notfoobar", [], Some(1));
         root.insert(b"foobar", 1);
+        // makes child "baz" under "foobar"
+        root.insert(b"foobarbaz", 3);
         assert_eq!(root.label_len(), 0);
         assert_eq!(root.children()[0].label(), b"foobar");
         assert_eq!(root.children()[1].label(), b"notfoobar");
