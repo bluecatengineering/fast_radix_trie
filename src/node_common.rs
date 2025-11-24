@@ -175,6 +175,7 @@ impl<V> Node<V> {
     }
     pub(crate) fn child_with_first_mut(&mut self, byte: u8) -> Option<&mut Self> {
         let i = self.child_index_with_first(byte)?;
+        // SAFETY: we know i is inside the bounds already
         Some(unsafe { self.children_mut().get_unchecked_mut(i) })
     }
     pub(crate) fn child_index_with_first(&self, byte: u8) -> Option<usize> {
@@ -191,10 +192,10 @@ impl<V> Node<V> {
     #[inline]
     pub(crate) fn get_node<K: ?Sized + BorrowedBytes>(&self, key: &K) -> Option<&Self> {
         let mut cur = self;
-        let mut key = key.as_bytes();
+        let mut remaining = key.as_bytes();
         loop {
-            key = crate::strip_prefix(key, cur.label())?;
-            match key.first() {
+            remaining = crate::strip_prefix(remaining, cur.label())?;
+            match remaining.first() {
                 None => return Some(cur),
                 Some(first) => {
                     cur = cur.child_with_first(*first)?;
@@ -271,10 +272,10 @@ impl<V> Node<V> {
     /// descend the node with the key and get a mutable reference to the matching element
     pub(crate) fn get_node_mut<K: ?Sized + BorrowedBytes>(&mut self, key: &K) -> Option<&mut Self> {
         let mut cur = self;
-        let mut key = key.as_bytes();
+        let mut remaining = key.as_bytes();
         loop {
-            key = crate::strip_prefix(key, cur.label())?;
-            match key.first() {
+            remaining = crate::strip_prefix(remaining, cur.label())?;
+            match remaining.first() {
                 None => return Some(cur),
                 Some(first) => {
                     cur = cur.child_with_first_mut(*first)?;
@@ -447,35 +448,36 @@ impl<V> Node<V> {
     /// remove the value at `key` and return it, merging the tree with its children
     /// if necessary.
     pub fn remove<K: ?Sized + BorrowedBytes>(&mut self, key: &K) -> Option<V> {
-        // Find the index of child
         let key = key.as_bytes();
         if key.is_empty() && self.label().is_empty() {
             // we're at root node
             return self.take_value();
         }
         let i = self.child_index_with_first(*key.first()?)?;
-        let child = &mut self.children_mut()[i];
+        // SAFETY: we know child is in bounds
+        let child = unsafe { self.children_mut().get_unchecked_mut(i) };
 
-        let suffix = crate::strip_prefix(key, child.label())?;
-        if suffix.is_empty() {
-            // The child's label is equal to the key, so we remove the child.
-            let value = child.take_value();
-
+        let remaining = crate::strip_prefix(key, child.label())?;
+        if remaining.is_empty() {
+            // no remaining suffix left (child == parent), so remove
+            let val = child.take_value();
             if child.children().is_empty() {
-                // If the child is a leaf, we remove the child node itself.
+                // the child is a leaf so remove
+                // SAFETY: we know i is in bounds
                 unsafe {
                     self.remove_child(i);
                 }
             } else {
-                // try to merge with child if there is a single
+                // there are children, call try_merge
                 child.try_merge_child();
             }
 
-            value
+            val
         } else {
-            let value = child.remove(suffix);
+            // go deeper, recursively call remove on child with remaining
+            let val = child.remove(remaining);
             child.try_merge_child();
-            value
+            val
         }
     }
 
@@ -488,8 +490,7 @@ impl<V> Node<V> {
             ptr: self.ptr,
             ptr_data: self.ptr_data(),
         };
-        // SAFETY:
-        // - we know there is exactly 1 child
+        // SAFETY: we know there is exactly 1 child
         let mut child: Node<V> = unsafe { some!(old_parent.children_ptr()).read() };
         // merge child label
         child.prefix_label(self.label());
@@ -511,76 +512,73 @@ impl<V> Node<V> {
         let mut cur = self;
         let mut key = key.as_bytes();
         loop {
-            match crate::lcp_by4(cur.label(), key) {
-                (n, Some(_)) => {
-                    // new child from common prefix that needs split at n
-                    let (_, new_suffix) = unsafe { key.split_at_unchecked(n) };
-                    let new_child = Node::new(new_suffix, [], None);
-                    // get back index of new_child
-                    let idx = unsafe { cur.split_at(n, Some(new_child)) };
-                    return Entry::Vacant(VacantEntry {
-                        // return new_child as current node so caller can insert
-                        node: unsafe { cur.children_mut().get_unchecked_mut(idx) },
-                    });
-                }
-                (n, None) => {
-                    // new child needed but next element doesn't exist
-                    match key.len().cmp(&cur.label_len()) {
-                        Ordering::Less => {
-                            unsafe { cur.split_at(key.len(), None) };
-                            // cur.set_value(val);
-                            return Entry::Vacant(VacantEntry { node: cur });
-                        }
-                        Ordering::Equal => {
-                            return if cur.value().is_some() {
-                                Entry::Occupied(OccupiedEntry { node: cur })
-                            } else {
-                                Entry::Vacant(VacantEntry { node: cur })
-                            };
-                        }
-                        Ordering::Greater => {
-                            // prefix match but key is longer, so we need to insert into a child
-                            key = unsafe { key.get_unchecked(cur.label_len()..) };
-                            let first_byte = key[0];
-                            match cur.child_index_with_first(first_byte) {
-                                Some(i) => {
-                                    // SAFETY: we just checked i is in range
-                                    cur = unsafe { cur.children_mut().get_unchecked_mut(i) };
-                                    continue;
-                                }
-                                None => {
-                                    // get insert index
-                                    let insert_index = cur
-                                        .children_first_bytes()
-                                        .enumerate()
-                                        .find(|(_, b)| *b >= first_byte)
-                                        .map(|(i, _)| i)
-                                        .unwrap_or(cur.children_len());
+            let (n, next) = crate::lcp_by4(cur.label(), key);
+            if next.is_some() {
+                // new child from common prefix that needs split at n
+                let (_, new_suffix) = unsafe { key.split_at_unchecked(n) };
+                let new_child = Node::new(new_suffix, [], None);
+                // get back index of new_child
+                let idx = unsafe { cur.split_at(n, Some(new_child)) };
+                return Entry::Vacant(VacantEntry {
+                    // return new_child as current node so caller can insert
+                    node: unsafe { cur.children_mut().get_unchecked_mut(idx) },
+                });
+            } else {
+                // new child needed but next element doesn't exist
+                match key.len().cmp(&cur.label_len()) {
+                    Ordering::Less => {
+                        unsafe { cur.split_at(key.len(), None) };
+                        // cur.set_value(val);
+                        return Entry::Vacant(VacantEntry { node: cur });
+                    }
+                    Ordering::Equal => {
+                        return if cur.value().is_some() {
+                            Entry::Occupied(OccupiedEntry { node: cur })
+                        } else {
+                            Entry::Vacant(VacantEntry { node: cur })
+                        };
+                    }
+                    Ordering::Greater => {
+                        // prefix match but key is longer, so we need to insert into a child
+                        key = unsafe { key.get_unchecked(cur.label_len()..) };
+                        let first_byte = key[0];
+                        match cur.child_index_with_first(first_byte) {
+                            Some(i) => {
+                                // SAFETY: we just checked i is in range
+                                cur = unsafe { cur.children_mut().get_unchecked_mut(i) };
+                                continue;
+                            }
+                            None => {
+                                // get insert index
+                                let insert_index = cur
+                                    .children_first_bytes()
+                                    .enumerate()
+                                    .find(|(_, b)| *b >= first_byte)
+                                    .map(|(i, _)| i)
+                                    .unwrap_or(cur.children_len());
 
-                                    // if key is bigger than max len and there's no common prefix
-                                    // or the previous length was 255, we need to split off
-                                    // the first chunk and chain the labels together
-                                    if (n == 0 || n == MAX_LABEL_LEN) && key.len() > MAX_LABEL_LEN {
-                                        let child: Node<V> =
-                                            Node::new(&key[..MAX_LABEL_LEN], [], None);
-                                        unsafe {
-                                            cur.add_child(child, insert_index);
-                                            cur = cur.children_mut().get_unchecked_mut(insert_index)
-                                        }
-                                        continue;
-                                    } else {
-                                        // we now have index of where we can insert
-                                        let child = Node::new(key, [], None);
-                                        // SAFETY: insert_index must be <= children len
-                                        unsafe {
-                                            cur.add_child(child, insert_index);
-                                        }
-                                        return Entry::Vacant(VacantEntry {
-                                            node: unsafe {
-                                                cur.children_mut().get_unchecked_mut(insert_index)
-                                            },
-                                        });
+                                // if key is bigger than max len and there's no common prefix
+                                // or the previous length was 255, we need to split off
+                                // the first chunk and chain the labels together
+                                if (n == 0 || n == MAX_LABEL_LEN) && key.len() > MAX_LABEL_LEN {
+                                    let child: Node<V> = Node::new(&key[..MAX_LABEL_LEN], [], None);
+                                    unsafe {
+                                        cur.add_child(child, insert_index);
+                                        cur = cur.children_mut().get_unchecked_mut(insert_index)
                                     }
+                                    continue;
+                                } else {
+                                    // we now have index of where we can insert
+                                    let child = Node::new(key, [], None);
+                                    // SAFETY: insert_index must be <= children len
+                                    unsafe {
+                                        cur.add_child(child, insert_index);
+                                    }
+                                    return Entry::Vacant(VacantEntry {
+                                        node: unsafe {
+                                            cur.children_mut().get_unchecked_mut(insert_index)
+                                        },
+                                    });
                                 }
                             }
                         }
@@ -599,70 +597,67 @@ impl<V> Node<V> {
         let mut cur = self;
         let mut key = key.as_bytes();
         loop {
-            match crate::lcp_by4(cur.label(), key) {
-                (n, Some(_)) => {
-                    // new child from common prefix that needs split at n
-                    let (_, new_suffix) = unsafe { key.split_at_unchecked(n) };
-                    let new_child = Node::new(new_suffix, [], Some(value));
-                    unsafe {
-                        cur.split_at(n, Some(new_child));
-                    }
-                    return None;
+            let (n, next) = crate::lcp_by4(cur.label(), key);
+            if next.is_some() {
+                // new child from common prefix that needs split at n
+                let (_, new_suffix) = unsafe { key.split_at_unchecked(n) };
+                let new_child = Node::new(new_suffix, [], Some(value));
+                unsafe {
+                    cur.split_at(n, Some(new_child));
                 }
-                (n, None) => {
-                    // new child needed but next element doesn't exist
-                    match key.len().cmp(&cur.label_len()) {
-                        Ordering::Less => {
-                            unsafe { cur.split_at(key.len(), None) };
-                            cur.set_value(value);
-                            return None;
-                        }
-                        Ordering::Equal => {
-                            // key and node are equal, replace data
-                            let old_val = cur.take_value();
-                            cur.set_value(value);
-                            return old_val;
-                        }
-                        Ordering::Greater => {
-                            // prefix match but key is longer, so we need to insert into a child
-                            key = unsafe { key.get_unchecked(cur.label_len()..) };
-                            let first_byte = key[0];
-                            match cur.child_index_with_first(first_byte) {
-                                Some(i) => {
-                                    // SAFETY: we just checked i is in range
-                                    cur = unsafe { cur.children_mut().get_unchecked_mut(i) };
-                                    continue;
-                                }
-                                None => {
-                                    // benchmarked a binary search and it's actually slower than sequential.
-                                    // Likely the max label size (255) makes branch misses not worth it.
-                                    let insert_index = cur
-                                        .children_first_bytes()
-                                        .enumerate()
-                                        .find(|(_, b)| *b >= first_byte)
-                                        .map(|(i, _)| i)
-                                        .unwrap_or(cur.children_len());
+                return None;
+            } else {
+                // new child needed but next element doesn't exist
+                match key.len().cmp(&cur.label_len()) {
+                    Ordering::Less => {
+                        unsafe { cur.split_at(key.len(), None) };
+                        cur.set_value(value);
+                        return None;
+                    }
+                    Ordering::Equal => {
+                        // key and node are equal, replace data
+                        let old_val = cur.take_value();
+                        cur.set_value(value);
+                        return old_val;
+                    }
+                    Ordering::Greater => {
+                        // prefix match but key is longer, so we need to insert into a child
+                        key = unsafe { key.get_unchecked(cur.label_len()..) };
+                        let first_byte = key[0];
+                        match cur.child_index_with_first(first_byte) {
+                            Some(i) => {
+                                // SAFETY: we just checked i is in range
+                                cur = unsafe { cur.children_mut().get_unchecked_mut(i) };
+                                continue;
+                            }
+                            None => {
+                                // benchmarked a binary search and it's actually slower than sequential.
+                                // Likely the max label size (255) makes branch misses not worth it.
+                                let insert_index = cur
+                                    .children_first_bytes()
+                                    .enumerate()
+                                    .find(|(_, b)| *b >= first_byte)
+                                    .map(|(i, _)| i)
+                                    .unwrap_or(cur.children_len());
 
-                                    // if key is bigger than max len and there's no common prefix
-                                    // or the previous length was 255, we need to split off
-                                    // the first chunk and chain the labels together
-                                    if (n == 0 || n == MAX_LABEL_LEN) && key.len() > MAX_LABEL_LEN {
-                                        let child: Node<V> =
-                                            Node::new(&key[..MAX_LABEL_LEN], [], None);
-                                        unsafe {
-                                            cur.add_child(child, insert_index);
-                                            cur = cur.children_mut().get_unchecked_mut(insert_index)
-                                        }
-                                        continue;
-                                    } else {
-                                        // we now have index of where we can insert
-                                        let child = Node::new(key, [], Some(value));
-                                        // SAFETY: insert_index must be <= children len
-                                        unsafe {
-                                            cur.add_child(child, insert_index);
-                                        }
-                                        return None;
+                                // if key is bigger than max len and there's no common prefix
+                                // or the previous length was 255, we need to split off
+                                // the first chunk and chain the labels together
+                                if (n == 0 || n == MAX_LABEL_LEN) && key.len() > MAX_LABEL_LEN {
+                                    let child: Node<V> = Node::new(&key[..MAX_LABEL_LEN], [], None);
+                                    unsafe {
+                                        cur.add_child(child, insert_index);
+                                        cur = cur.children_mut().get_unchecked_mut(insert_index)
                                     }
+                                    continue;
+                                } else {
+                                    // we now have index of where we can insert
+                                    let child = Node::new(key, [], Some(value));
+                                    // SAFETY: insert_index must be <= children len
+                                    unsafe {
+                                        cur.add_child(child, insert_index);
+                                    }
+                                    return None;
                                 }
                             }
                         }

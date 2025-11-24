@@ -198,10 +198,11 @@ impl BorrowedBytes for str {
     }
 }
 
-/// uses memchr to strip the prefix from the haystack if it is a valid prefix
+/// strip the prefix from the haystack
 #[inline(always)]
 pub fn strip_prefix<'a>(haystack: &'a [u8], prefix: &[u8]) -> Option<&'a [u8]> {
     if memchr::arch::all::is_prefix(haystack, prefix) {
+        // SAFETY: we know prefix is a prefix of haystack so len is less than haystack
         unsafe { Some(haystack.get_unchecked(prefix.len()..)) }
     } else {
         None
@@ -217,7 +218,8 @@ pub fn longest_common_prefix_by_byte(a: &[u8], b: &[u8]) -> (usize, Option<Order
     let cmp = if a.is_empty() || b.is_empty() || i >= min_len {
         None
     } else {
-        Some(a[i].cmp(&b[i]))
+        // SAFETY: i is less than min_len
+        unsafe { Some(a.get_unchecked(i).cmp(b.get_unchecked(i))) }
     };
     (i, cmp)
 }
@@ -234,20 +236,23 @@ macro_rules! fn_lcp {
             let mut i = 0;
             // go through CHUNK_LEN bytes at a time
             for (a_chunk, b_chunk) in a.chunks_exact(CHUNK_LEN).zip(b.chunks_exact(CHUNK_LEN)) {
-                let ax = <$ty>::from_ne_bytes(a_chunk.try_into().ok().unwrap());
-                let bx = <$ty>::from_ne_bytes(b_chunk.try_into().ok().unwrap());
+                let a_num = <$ty>::from_ne_bytes(a_chunk.try_into().ok().unwrap());
+                let b_num = <$ty>::from_ne_bytes(b_chunk.try_into().ok().unwrap());
 
-                if ax != bx {
+                if a_num != b_num {
                     // find byte diff
-                    let diff = i + ((ax ^ bx).trailing_zeros() / 8) as usize;
-                    return (diff, Some(a[diff].cmp(&b[diff])));
+                    let diff_idx = i + ((a_num ^ b_num).trailing_zeros() / 8) as usize;
+                    return (diff_idx, Some(a[diff_idx].cmp(&b[diff_idx])));
                 }
                 i += CHUNK_LEN;
             }
             // process remaining bytes less than CHUNK_LEN - one at a time
             while i < min_len {
-                if a[i] != b[i] {
-                    return (i, Some(a[i].cmp(&b[i])));
+                // SAFETY: we know i is less than min_len
+                let a_byte = unsafe { a.get_unchecked(i) };
+                let b_byte = unsafe { b.get_unchecked(i) };
+                if a_byte != b_byte {
+                    return (i, Some(a_byte.cmp(&b_byte)));
                 }
                 i += 1;
             }

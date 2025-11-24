@@ -190,8 +190,12 @@ impl<V> Node<V> {
         let old_ptr_data = self.ptr_data();
 
         debug_assert!(
-            old_ptr_data.layout.size() <= new_ptr_data.layout.size(),
-            "When prepending a prefix to the label, the allocation size should not decrease."
+            if prefix {
+                old_ptr_data.layout.size() <= new_ptr_data.layout.size()
+            } else {
+                true
+            },
+            "When prefixing label, the size of allocation must increase"
         );
 
         unsafe {
