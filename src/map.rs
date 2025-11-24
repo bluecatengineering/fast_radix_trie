@@ -565,14 +565,6 @@ impl<K: Bytes, V> GenericRadixMap<K, V> {
     }
 }
 
-// impl<K: Bytes + fmt::Debug, V: fmt::Debug> fmt::Debug for GenericRadixMap<K, V> {
-//     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-//         f.debug_struct("RadixMap")
-//             .field("root", &self.tree.root())
-//             .finish()
-//     }
-// }
-
 impl<K, V: Clone> Clone for GenericRadixMap<K, V> {
     fn clone(&self) -> Self {
         Self {

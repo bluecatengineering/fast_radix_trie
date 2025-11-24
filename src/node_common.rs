@@ -683,34 +683,39 @@ impl<V> Node<V> {
 impl<V: fmt::Debug> fmt::Debug for Node<V> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         const HORIZ: char = '─';
-        // const VERT: char = '|';
         const BRANCH: char = '├';
         const END: char = '└';
+        const NEWLINE_INDENT: usize = 4;
+        const WHITE_INDENT: usize = 2;
+        const EMPTY: &str = " ";
+        // (node, white, line, is_last)
         let mut stack = vec![(self, 0, 0, false)];
 
-        while let Some((next, white_indentation, line_indentation, last)) = stack.pop() {
-            let label = String::from_utf8_lossy(next.label());
-            let value = next
-                .value()
-                .map(|v| format!("({v:?})"))
-                .unwrap_or_else(|| String::from("(-)"));
-
-            let prefix = if white_indentation == 0 && line_indentation == 0 {
+        while let Some((next, white_indent, line_indent, is_last)) = stack.pop() {
+            let indent = if white_indent == 0 && line_indent == 0 {
                 String::new()
             } else {
-                let whitespace = " ".repeat(white_indentation);
-                let line = " ".repeat(line_indentation - 1);
-                let branch_char = if last { END } else { BRANCH };
+                let whitespace = EMPTY.repeat(white_indent);
+                let line = EMPTY.repeat(line_indent - 1);
+                let branch_char = if is_last { END } else { BRANCH };
                 format!("{whitespace}{line}{branch_char}{HORIZ}")
             };
 
-            writeln!(f, "{prefix}\"{label}\" {value}")?;
+            let label = String::from_utf8_lossy(next.label());
+
+            let value = next
+                .value()
+                .map(|v| format!("({v:?})"))
+                // if no value found
+                .unwrap_or_else(|| String::from("(-)"));
+
+            // label:? prints "<label>"
+            writeln!(f, "{indent}{label:?} {value}")?;
 
             for (i, child) in next.children().iter().rev().enumerate() {
-                let new_line_indentation = 4;
-                let white_indentation = white_indentation + line_indentation + 2;
-                let last = i == 0;
-                stack.push((child, white_indentation, new_line_indentation, last));
+                let white_indent = white_indent + line_indent + WHITE_INDENT;
+                let is_last = i == 0;
+                stack.push((child, white_indent, NEWLINE_INDENT, is_last));
             }
         }
         Ok(())
@@ -1459,6 +1464,7 @@ mod tests {
     #[test]
     fn test_get_node() {
         let root = create_test_tree();
+        dbg!(&root);
         // Exact matches
         assert_eq!(root.get_node("").unwrap().value(), None);
         assert_eq!(root.get_node("a").unwrap().label(), b"a");
