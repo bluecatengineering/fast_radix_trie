@@ -201,10 +201,10 @@ impl BorrowedBytes for str {
 /// uses memchr to strip the prefix from the haystack if it is a valid prefix
 #[inline(always)]
 pub fn strip_prefix<'a>(haystack: &'a [u8], prefix: &[u8]) -> Option<&'a [u8]> {
-    if !memchr::arch::all::is_prefix(haystack, prefix) {
-        None
+    if memchr::arch::all::is_prefix(haystack, prefix) {
+        unsafe { Some(haystack.get_unchecked(prefix.len()..)) }
     } else {
-        Some(&haystack[prefix.len()..])
+        None
     }
 }
 
@@ -258,6 +258,7 @@ macro_rules! fn_lcp {
 }
 
 fn_lcp!(u32, lcp_by4);
+fn_lcp!(u32, longest_common_prefix);
 fn_lcp!(u64, lcp_by8);
 
 #[cfg(test)]
