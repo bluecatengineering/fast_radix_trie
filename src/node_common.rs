@@ -680,44 +680,38 @@ impl<V> Node<V> {
     }
 }
 
-impl<V: fmt::Debug> fmt::Debug for Node<V> {
+impl<V: fmt::Debug> fmt::Debug for super::Node<V> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        const HORIZ: char = '─';
-        const BRANCH: char = '├';
-        const END: char = '└';
-        const NEWLINE_INDENT: usize = 4;
-        const WHITE_INDENT: usize = 2;
-        const EMPTY: &str = " ";
-        // (node, white, line, is_last)
-        let mut stack = vec![(self, 0, 0, false)];
+        // First, print the root node's information. It has no prefix or branch.
+        // Stack: (node, prefix_for_this_level, is_last_child)
+        let mut stack = vec![(self, String::new(), false)];
 
-        while let Some((next, white_indent, line_indent, is_last)) = stack.pop() {
-            let indent = if white_indent == 0 && line_indent == 0 {
-                String::new()
-            } else {
-                let whitespace = EMPTY.repeat(white_indent);
-                let line = EMPTY.repeat(line_indent - 1);
-                let branch_char = if is_last { END } else { BRANCH };
-                format!("{whitespace}{line}{branch_char}{HORIZ}")
-            };
+        while let Some((node, prefix, is_last)) = stack.pop() {
+            let root = prefix.is_empty();
 
-            let label = String::from_utf8_lossy(next.label());
-
-            let value = next
+            let label = String::from_utf8_lossy(node.label());
+            let value = node
                 .value()
                 .map(|v| format!("({v:?})"))
-                // if no value found
-                .unwrap_or_else(|| String::from("(-)"));
+                .unwrap_or_else(|| "(-)".to_string());
 
-            // label:? prints "<label>"
-            writeln!(f, "{indent}{label:?} {value}")?;
+            if root {
+                writeln!(f, "{label:?} {value}")?;
+            } else {
+                // Determine the branch characters for the current node
+                let branch = if is_last { "└── " } else { "├── " };
+                writeln!(f, "{prefix}{branch}{label:?} {value}")?;
+            }
 
-            for (i, child) in next.children().iter().rev().enumerate() {
-                let white_indent = white_indent + line_indent + WHITE_INDENT;
-                let is_last = i == 0;
-                stack.push((child, white_indent, NEWLINE_INDENT, is_last));
+            // This prefix extends the line drawing from the parent
+            let child_prefix = format!("{prefix}{}", if is_last || root { "    " } else { "│   " });
+
+            // Push the current node's children onto the stack in reverse
+            for (i, child) in node.children().iter().rev().enumerate() {
+                stack.push((child, child_prefix.clone(), i == 0));
             }
         }
+
         Ok(())
     }
 }
@@ -1878,6 +1872,27 @@ mod tests {
 
     #[test]
     fn test_root() {
+        let mut map = RadixMap::new();
+        map.insert("a", 1);
+        map.insert("apple", 2);
+        map.insert("applesauce", 3);
+        map.insert("apply", 4);
+        map.insert("abort", 5);
+        map.insert("abs", 6);
+        map.insert("box", 7);
+        dbg!(&map);
+
+        // You can split by prefix also to create separate the tree:
+        let other = map.split_by_prefix("ap");
+        dbg!(&map);
+        // &map = "" (-)
+        //      ├─"a" (1)
+        //            └─"b" (-)
+        //                  ├─"ort" (5)
+        //                  └─"s" (6)
+        //      └─"box" (7)
+        dbg!(&other);
+
         // test creation of new root where nothing matches
         let mut root = Node::new(b"notfoobar", [], Some(1));
         root.insert(b"foobar", 1);

@@ -34,15 +34,15 @@ map.insert("abs", 6);
 map.insert("box", 7);
 
 // &map = "" (-)
-//      ├─"a" (1)
-//            ├─"b" (-)
-//                  ├─"ort" (5)
-//                  └─"s" (6)
-//            └─"ppl" (-)
-//                  ├─"e" (2)
-//                        └─"sauce" (3)
-//                  └─"y" (4)
-//      └─"box" (7)
+//    ├── "a" (1)
+//    │   ├── "b" (-)
+//    │   │   ├── "ort" (5)
+//    │   │   └── "s" (6)
+//    │   └── "ppl" (-)
+//    │       ├── "e" (2)
+//    │       │   └── "sauce" (3)
+//    │       └── "y" (4)
+//    └── "box" (7)
 
 assert_eq!(map.len(), 7);
 
@@ -54,18 +54,18 @@ assert_eq!(map.get("applebees"), None);
 // You can split by prefix also to create separate the tree:
 let other = map.split_by_prefix("ap");
 dbg!(&map);
-// &map = "" (-)
-//      ├─"a" (1)
-//            └─"b" (-)
-//                  ├─"ort" (5)
-//                  └─"s" (6)
-//      └─"box" (7)
+// map: "" (-)
+//    ├── "a" (1)
+//    │   └── "b" (-)
+//    │       ├── "ort" (5)
+//    │       └── "s" (6)
+//    └── "box" (7)
 dbg!(&other);
-// &other = "" (-)
-//     └─"appl" (-)
-//         ├─"e" (2)
-//             └─"sauce" (3)
-//         └─"y" (4)
+// other: "" (-)
+//     └── "appl" (-)
+//         ├── "e" (2)
+//         │   └── "sauce" (3)
+//         └── "y" (4)
 
 // You can also use `common_prefixes` to return an iterator over all matching entries
 // as you traverse:

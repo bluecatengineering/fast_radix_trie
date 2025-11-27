@@ -11,6 +11,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - `lcp_by4`/`lcp_by8`
 
+## Changed
+
+- `fmt::Debug` output look
+
 ## [1.1.0]
 
 ## Added
