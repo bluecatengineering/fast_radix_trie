@@ -693,7 +693,7 @@ impl<V: fmt::Debug> fmt::Debug for super::Node<V> {
             let value = node
                 .value()
                 .map(|v| format!("({v:?})"))
-                .unwrap_or_else(|| "(-)".to_string());
+                .unwrap_or_else(|| String::from("(-)"));
 
             if root {
                 writeln!(f, "{label:?} {value}")?;
