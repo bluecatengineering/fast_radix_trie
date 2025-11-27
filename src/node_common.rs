@@ -1872,27 +1872,6 @@ mod tests {
 
     #[test]
     fn test_root() {
-        let mut map = RadixMap::new();
-        map.insert("a", 1);
-        map.insert("apple", 2);
-        map.insert("applesauce", 3);
-        map.insert("apply", 4);
-        map.insert("abort", 5);
-        map.insert("abs", 6);
-        map.insert("box", 7);
-        dbg!(&map);
-
-        // You can split by prefix also to create separate the tree:
-        let other = map.split_by_prefix("ap");
-        dbg!(&map);
-        // &map = "" (-)
-        //      ├─"a" (1)
-        //            └─"b" (-)
-        //                  ├─"ort" (5)
-        //                  └─"s" (6)
-        //      └─"box" (7)
-        dbg!(&other);
-
         // test creation of new root where nothing matches
         let mut root = Node::new(b"notfoobar", [], Some(1));
         root.insert(b"foobar", 1);
