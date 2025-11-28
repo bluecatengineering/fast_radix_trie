@@ -98,7 +98,7 @@ assert_eq!(
 
 ## Differences with patricia_tree
 
-I've not removed any methods from `patricia_tree` at the time of the fork, and this crate passes the original test suite, so you should just be able to swap one for the other and enjoy the performance benefits. Additionally, this crate adds an `entry` API and a few other useful methods.
+I've not removed any methods from `patricia_tree` at the time of the fork, with the exception of the binary serialization (file an issue if this is desired). This crate passes the original test suite, so you should just be able to swap one for the other and enjoy the performance benefits. Additionally, this crate adds an `entry` API and a few other useful methods.
 
 ## Benchmarks
 
