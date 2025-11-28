@@ -84,6 +84,8 @@ assert!(t
     .flatten()
     .eq(vec![&"a", &"b", &"c", &"d"].into_iter()));
 
+// Entry API
+
 assert_eq!(
     t.entry("ab")
         .and_modify(|v| {
@@ -96,7 +98,7 @@ assert_eq!(
 
 ## Differences with patricia_tree
 
-This library passes the original test suite (with minor modifications like debug output), so you should just be able to substitute one for the other.
+I've not removed any methods from `patricia_tree` at the time of the fork, and this crate passes the original test suite, so you should just be able to swap one for the other and enjoy the performance benefits. Additionally, this crate adds an `entry` API and a few other useful methods.
 
 ## Benchmarks
 
