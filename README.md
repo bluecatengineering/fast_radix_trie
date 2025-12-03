@@ -5,7 +5,9 @@
 [![Actions Status](https://github.com/bluecatengineering/fast_radix_trie/workflows/CI/badge.svg)](https://github.com/bluecatengineering/fast_radix_trie/actions)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-[Documentation](https://docs.rs/fast_radix_trie)
+[Implementation](#implementation)
+[Examples](#examples)
+[Benchmarks](#benchmarks)
 
 A radix tree compresses nodes such that common prefixes are shared. This minimizes memory usage for storing large sets of strings/bytes. Additionally, this library optimizes memory layout/padding to further reduce memory consumption, leading to significant memory savings and fast traversal time for large data sets. `fast_radix_trie` has a benchmark suite run against std's HashMap/BTreeMap and other popular rust trie libraries, and `fast_radix_trie` seems to use less memory than most while also being faster or on par for insert/remove/retrieve operations.
 
@@ -112,14 +114,18 @@ However, the library offers significant memory savings over the std data structu
 | hashset                                                                               |   8.1s   | 1,784 MB  | enwiki-latest-all-titles-in-ns0 |
 | btree                                                                                 | 4.5s \*  | 1,607 MB  | enwiki-latest-all-titles-in-ns0 |
 | [rust_radix_trie](https://github.com/michaelsproul/rust_radix_trie/)                  |   9.5s   | 7,920 MB  | enwiki-latest-all-titles-in-ns0 |
+| [trie-hard](https://github.com/cloudflare/trie-hard/)                                 |  18.60s  | 4,418 MB  | enwiki-latest-all-titles-in-ns0 |
 | [qptrie](https://github.com/jedisct1/rust-qptrie/)                                    |    7s    | 2,241 MB  | enwiki-latest-all-titles-in-ns0 |
 | [patricia_tree](https://github.com/sile/patricia_tree/)                               |   25s    | 874 MB \* | enwiki-latest-all-titles-in-ns0 |
 | [fast_radix_trie](https://github.com/bluecatengineering/fast_radix_trie) (this crate) | 0.45s \* | 50 MB \*  |                     top-domains |
 | hashset                                                                               | 0.3s \*  |  108 MB   |                     top-domains |
 | btree                                                                                 |  0.48s   |   73 MB   |                     top-domains |
 | [rust_radix_trie](https://github.com/michaelsproul/rust_radix_trie/)                  |  1.03s   |  430 MB   |                     top-domains |
+| [trie-hard](https://github.com/cloudflare/trie-hard/)                                 |  1.20s   |  233 MB   |                     top-domains |
 | [qptrie](https://github.com/jedisct1/rust-qptrie/)                                    |  0.80s   |  115 MB   |                     top-domains |
 | [patricia_tree](https://github.com/sile/patricia_tree/)                               |  1.27s   | 48 MB \*  |                     top-domains |
+
+NOTE: `trie-hard` does not allow you to `insert` entries, it only holds borrowed data and can only create a trie using references to `Vec` entries so the memory reading includes both the vec and trie.
 
 The only data structure to beat the insertion time is std HashSet but it takes almost twice as much memory for the top 1 million domains. For retrieving individual random values, the benches show `fast_radix_trie` on the order of ~150 ns, competitive with std lib.
 

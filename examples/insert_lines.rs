@@ -19,6 +19,7 @@ fn main() -> noargs::Result<()> {
         "patricia",
         "patricia_map",
         "qptrie",
+        "triehard",
     ];
 
     let kind = noargs::opt("kind")
@@ -53,6 +54,17 @@ fn main() -> noargs::Result<()> {
                 set.insert(line);
             });
             println!("# LINES: {}", set.len());
+        }
+        "triehard" => {
+            let mut vec = Vec::new();
+            let mut count = 0;
+            let stdin = std::io::stdin();
+            for line in stdin.lock().lines() {
+                vec.push(line.unwrap().leak().as_bytes());
+                count += 1;
+            }
+            let _result = vec.into_iter().collect::<trie_hard::TrieHard<'_, _>>();
+            println!("# LINES: {count}");
         }
         "patricia" => {
             let mut set = patricia_tree::PatriciaSet::new();
