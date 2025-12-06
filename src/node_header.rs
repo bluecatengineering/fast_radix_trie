@@ -11,6 +11,9 @@ use crate::{node::Node, node_common::extend};
 
 const LABEL_OFFSET: isize = core::mem::size_of::<NodeHeader>() as isize;
 
+// these are the sized values that we know on initial allocation of a node
+// we know the label length and the number of children. The offsets of
+// other values can be determined dynamically based on these values.
 #[repr(C)]
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct NodeHeader {
@@ -31,11 +34,20 @@ pub(crate) struct NodePtrAndData<V> {
 }
 
 impl<V> NodePtrAndData<V> {
+    /// writes header
+    /// # Safety
+    /// Header values must always be in alignment with the offsets of the allocation
+    /// If you create a node, then write a header with different label/children lens, you
+    /// will have UB on accessing elements of the node
     #[inline]
     pub(crate) unsafe fn write_header(&mut self, header: NodeHeader) {
         unsafe { self.ptr.write(header) }
     }
 
+    /// writes value at offset calculated via header
+    /// # Safety
+    /// Value offset must point to a spot in memory sized correctly to hold the
+    /// value.
     #[inline]
     pub(crate) unsafe fn write_value(&mut self, value: Option<V>) {
         unsafe {
@@ -48,6 +60,10 @@ impl<V> NodePtrAndData<V> {
             )
         }
     }
+
+    /// write children nodes to child offset (if children_len > 0)
+    /// # Safety
+    /// node must have been sized with the same child alignment and size.
     #[inline]
     pub(crate) unsafe fn write_children<const N: usize>(&mut self, children: [Node<V>; N]) {
         if let Some(children_offset) = self.ptr_data.children_offset {
@@ -60,17 +76,28 @@ impl<V> NodePtrAndData<V> {
         }
     }
 
+    /// get children pointer
+    /// # Safety
+    /// header pointer must point to an allocation with the same layout in `ptr_data`
+    /// header pointer must point to allocation large enough to contain the offset pointer
     #[inline]
     pub(crate) unsafe fn children_ptr(&self) -> Option<NonNull<Node<V>>> {
         unsafe { self.ptr_data.children_ptr(self.ptr) }
     }
 
+    /// get value pointer
+    /// # Safety
+    /// header pointer must point to an allocation with the same layout in `ptr_data`
+    /// header pointer must point to allocation large enough to contain the offset pointer
     #[allow(dead_code)]
     #[inline]
     pub(crate) unsafe fn value_ptr(&self) -> NonNull<Option<V>> {
         unsafe { self.ptr_data.value_ptr(self.ptr) }
     }
 
+    /// label pointer
+    /// # Safety
+    ///
     #[inline]
     pub(crate) unsafe fn label_ptr(&self) -> NonNull<u8> {
         unsafe { self.ptr.byte_offset(LABEL_OFFSET).cast() }
@@ -93,6 +120,9 @@ impl<V> NodePtrAndData<V> {
         (self.ptr, self.ptr_data)
     }
 
+    /// # Safety:
+    /// all of the nodes fields must have been initialized
+    /// with valid data after allocation
     #[inline]
     pub(crate) unsafe fn assume_init(self) -> Node<V> {
         Node {
@@ -175,6 +205,8 @@ impl<V> PtrData<V> {
         }
     }
 
+    /// # Safety
+    /// The layout in dealloc must match the layout used with alloc
     #[inline]
     pub(crate) fn dealloc(self, header_ptr: NonNull<NodeHeader>) {
         let layout = self.layout;

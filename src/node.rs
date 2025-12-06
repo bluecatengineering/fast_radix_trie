@@ -48,8 +48,10 @@ impl<V: Clone> Clone for Node<V> {
 
 impl<V> Node<V> {
     /// Makes a new node.
-    /// SAFETY: - label len must not exceed 255
-    ///         - children len must not exceed 255
+    ///
+    /// # Safety
+    ///  - label len must not exceed 255
+    ///  - children len must not exceed 255
     pub fn new<const N: usize>(label: &[u8], children: [Node<V>; N], value: Option<V>) -> Self {
         // known at compile time
         if N > u8::MAX as usize {

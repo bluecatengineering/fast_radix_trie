@@ -14,7 +14,7 @@ use core::{
 /// Note that this is a low level building block.
 /// Usually it is recommended to use more high level data structures (e.g., `PatriciaTree`).
 pub struct Node<V> {
-    // alignment: will be 2 on nodes with no children and/or no value
+    // alignment: will be 1 on nodes with no children and/or no value
     // if it has children then 8 on x86-64 and more if V is wider
     // layout:
     //   - flags: u8

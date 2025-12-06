@@ -9,17 +9,19 @@
 [Examples](#examples)
 [Benchmarks](#benchmarks)
 
-This library is a radix trie implementation (a trie with node compression on common prefixes) that is built to be both performant and optimize memory layout/padding to further reduce memory consumption, leading to **significant memory savings** and fast traversal time for large data sets. 
+This library is a radix trie implementation (a trie with node compression on common prefixes) that is built to be both performant and optimize memory layout/padding to further reduce memory consumption, leading to **significant memory savings** and fast traversal time for large data sets.
 
 `fast_radix_trie` has a [benchmark suite](#benchmarks) run against std's HashMap/BTreeMap and other popular rust trie libraries, and `fast_radix_trie` uses **less memory than most while also being faster** or on par for insert/remove/retrieve operations.
 
-See [Radix tree](https://en.wikipedia.org/wiki/Radix_tree) for more details.
+`fast_radix_trie` has a benchmark suite run against std's HashMap/BTreeMap and other popular rust trie libraries, and `fast_radix_trie` uses less memory than most while also being faster or on par for insert/remove/retrieve operations.
+
+See [Radix tree](https://en.wikipedia.org/wiki/Radix_tree)
 
 ## Implementation
 
-Crate offers two implementations, one optimized for absolute minimum memory usage (minimizing padding/alignment where possible), and one optimized for mutations that uses `realloc`. Use `--no-default-features` to disable the `realloc` feature and use the implementation that's optimized for memory. This crate is no_std compatible.
+Crate offers two node layouts, one optimized for minimum memory usage where branch nodes will have a different alignment than leaf nodes (but where any mutation requires dropping the old node and allocating a new one), and one optimized for mutations that uses `realloc`. The default layout uses `realloc` to optimize for mutations. **Use `--no-default-features` to disable the `realloc` feature and use the implementation that's optimized for memory. This crate is no_std compatible.**
 
-The code is originally based on the excellent [patricia_tree](https://github.com/sile/patricia_tree), but whereas patricia tree uses a child/sibling pointer for each node (where siblings are traversed in a linked list to find nodes at the same level) a radix tree stores all children node pointers inline for faster traversal. It costs a small bit more memory, usually around 5% depending on the data set and size/alignment of value inserted, but can be around 4x faster to build the data structure, 2x faster for removals (more comparisons in `cargo bench`). If you use the `realloc` impl, mutations should be faster as we attempt to resize nodes rather than allocate new ones on mutation, particularly useful if you are removing entries.  Node label comparisons use `memchr` to compare multiple bytes at a time.
+The code is originally based on the excellent [patricia_tree](https://github.com/sile/patricia_tree), but whereas patricia tree uses a child/sibling pointer for each node (where siblings are traversed in a linked list to find nodes at the same level) a radix tree stores all children node pointers inline for faster traversal. It costs a small bit more memory, usually around 5% depending on the data set and size/alignment of value inserted, but can be around 4x faster to build the data structure, 2x faster for removals (more comparisons in `cargo bench`). If you use the `realloc` impl, mutations should be faster as we attempt to resize nodes rather than allocate new ones on mutation, particularly useful if you are removing entries. Node label comparisons use `memchr` to compare multiple bytes at a time.
 
 This library uses unsafe and raw pointers because nodes are dynamically sized to store node labels and children pointers at dynamic offsets inline in each node allocation. By doing this we can drastically reduce memory usage. The test suite is comprehensive and passes `miri`.
 

@@ -33,6 +33,7 @@ impl<V> Node<V> {
 
     /// Returns the label of this node.
     pub fn label(&self) -> &[u8] {
+        // SAFETY: must have been allocated using NodeHeader
         unsafe { PtrData::<V>::label(self.ptr) }
     }
 
@@ -44,18 +45,21 @@ impl<V> Node<V> {
 
     #[allow(unused)]
     pub(crate) fn label_mut(&mut self) -> &mut [u8] {
+        // SAFETY: must have been allocated using NodeHeader
         unsafe { PtrData::<V>::label_mut(self.ptr) }
     }
 
     /// Returns a reference to the header for this node.
     #[inline]
     pub(crate) fn header(&self) -> &NodeHeader {
+        // SAFETY: must have been allocated using NodeHeader
         unsafe { self.ptr.as_ref() }
     }
 
     #[allow(unused)]
     #[inline]
     pub(crate) fn header_mut(&mut self) -> &mut NodeHeader {
+        // SAFETY: must have been allocated using NodeHeader
         unsafe { self.ptr.as_mut() }
     }
     /// Returns the layout and field offsets for the allocated buffer backing this node.
@@ -67,11 +71,13 @@ impl<V> Node<V> {
     /// get all children for node as slice
     #[inline]
     pub fn children(&self) -> &[Node<V>] {
+        // SAFETY: children offset was created on allocation
         unsafe { self.ptr_data().children(self.ptr) }
     }
     /// get all children for node as mut slice
     #[inline]
     pub(crate) fn children_mut(&mut self) -> &mut [Node<V>] {
+        // SAFETY: children offset was created on allocation
         unsafe { self.ptr_data().children_mut(self.ptr) }
     }
     /// return the first byte of each childs label
@@ -591,7 +597,8 @@ impl<V> Node<V> {
     /// insert key and value into node, replacing value if key exists
     /// could be re-written to use `Entry` but the non-entry version is 5-10% faster
     /// so I'm leaving this for now
-    /// SAFETY:
+    ///
+    /// # Safety
     /// caller must not insert an empty label into children. only the root node can have an empty label
     pub fn insert<K: ?Sized + BorrowedBytes>(&mut self, key: &K, value: V) -> Option<V> {
         let mut cur = self;
