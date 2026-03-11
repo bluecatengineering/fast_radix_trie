@@ -25,12 +25,21 @@ pub struct Node<V> {
     pub(crate) _marker: PhantomData<V>,
 }
 
+// Safety:
+// - A `Node<V>` is safe to send across threads if `V` is `Send`
+// - The raw pointer is managed by this struct and not exposed
 unsafe impl<V: Send> Send for Node<V> {}
+// Safety:
+// - A `Node<V>` is safe to share across threads if `V` is `Sync`
+// - The raw pointer is managed by this struct and not exposed
 unsafe impl<V: Sync> Sync for Node<V> {}
 
 impl<V: Clone> Clone for Node<V> {
     fn clone(&self) -> Self {
         let mut new_ptr = self.ptr_data().allocate();
+        // Safety:
+        // - `new_ptr` is a freshly allocated and correctly aligned pointer from `allocate`
+        // - `new_ptr.assume_init()` is safe because all parts of the node have been initialized
         unsafe {
             new_ptr.write_header(*self.header());
             new_ptr.write_label(self.label());
@@ -67,6 +76,9 @@ impl<V> Node<V> {
             children_len: children.len() as u8,
         };
         let mut ptr = header.ptr_data().allocate();
+        // Safety:
+        // - `ptr` is a freshly allocated and correctly aligned pointer from `allocate`
+        // - All parts of the node are initialized before `assume_init` is called
         unsafe {
             ptr.write_header(header);
             ptr.write_label(label);
@@ -78,17 +90,29 @@ impl<V> Node<V> {
 
     /// Returns the reference to the value of this node.
     pub fn value(&self) -> Option<&V> {
+        // Safety:
+        // - `self.ptr` points to an allocation with the same valid layout it was allocated with
+        // - `value_ptr` correctly calculates the offset to the `Option<V>`
         unsafe { (self.ptr_data().value_ptr(self.ptr)).as_ref() }.as_ref()
     }
 
     /// Returns the mutable reference to the value of this node.
     pub fn value_mut(&mut self) -> Option<&mut V> {
+        // Safety:
+        // - `self.ptr` points to an allocation with the same valid layout it was allocated with
+        // - `value_ptr` correctly calculates the offset to the `Option<V>`
         unsafe { (self.ptr_data().value_ptr(self.ptr)).as_mut() }.as_mut()
     }
 
     /// Returns mutable references to the node itself with its sibling and child
     pub fn as_mut(&mut self) -> NodeMut<'_, V> {
+        // Safety:
+        // - `self.ptr` points to an allocation with the same valid layout it was allocated with
+        // - `value_ptr` correctly calculates the offset to the `Option<V>`
         let value = unsafe { self.ptr_data().value_ptr(self.ptr).as_mut() }.as_mut();
+        // Safety:
+        // - `self.ptr` points to an allocation with the same valid layout it was allocated with
+        // - `children_mut_opt` correctly calculates the offset to the children array if it exists
         let children = unsafe { self.ptr_data().children_mut_opt(self.ptr) };
 
         NodeMut {
@@ -100,6 +124,9 @@ impl<V> Node<V> {
 
     /// Takes the value out of this node.
     pub fn take_value(&mut self) -> Option<V> {
+        // Safety:
+        // - `self.ptr` points to an allocation with the same valid layout it was allocated with
+        // - `value_ptr` correctly calculates the offset to the `Option<V>`
         unsafe {
             let ptr = self.ptr_data().value_ptr(self.ptr);
             ptr.replace(None)
@@ -108,6 +135,9 @@ impl<V> Node<V> {
 
     /// adds child at i and shifts elements right
     /// child index must be at i <= len, len can be 0
+    // Safety:
+    // - `i` must be a valid index to insert at, i.e. `i <= self.children_len()`
+    // - `self.children_len()` must be less than `u8::MAX`
     pub(crate) unsafe fn add_child(&mut self, new_child: Node<V>, i: usize) {
         debug_assert!(
             i <= self.children_len(),
@@ -128,6 +158,13 @@ impl<V> Node<V> {
         let old_ptr_data = self.ptr_data();
         let value = self.take_value();
 
+        // Safety:
+        // - `realloc` is safe because `self.ptr` points to a valid allocation with `old_ptr_data.layout`.
+        //   The new size is calculated correctly in `new_ptr_data.layout`
+        // - `copy_to` is safe because `i` is a valid index, `num` is within bounds
+        //   and the source and destination pointers are within the newly allocated block
+        // - `new_ptr.assume_init()` is safe because all parts of the node have been initialized
+        // - the pointer is assigned using `forget()` because we reallocated
         unsafe {
             let raw_ptr = alloc::alloc::realloc(
                 self.ptr.as_ptr().cast(),
@@ -200,6 +237,14 @@ impl<V> Node<V> {
             "When prefixing label, the size of allocation must increase"
         );
 
+        // Safety:
+        // - `realloc` is safe because `self.ptr` points to a valid allocation with `old_ptr_data.layout`.
+        //   The new size is calculated correctly in `new_ptr_data.layout`
+        // - `new_ptr.write_value(value)` is safe because the space is allocated
+        // - `copy_from` and `copy_from_nonoverlapping` are safe because the source and destination pointers
+        //   are valid and within the allocated blocks, and the lengths within bounds
+        // - `new_ptr.assume_init()` is safe because all parts of the node have been initialized
+        // - the pointer is assigned using `forget()` because we reallocated
         unsafe {
             let raw_ptr = alloc::alloc::realloc(
                 self.ptr.as_ptr().cast(),
@@ -253,6 +298,8 @@ impl<V> Node<V> {
 
     /// removes child at i and shifts elements left
     /// node must have children already
+    // Safety:
+    // - `i` must be a valid index of a child, i.e. `i < self.children_len()`
     pub(crate) unsafe fn remove_child(&mut self, i: usize) -> Node<V> {
         debug_assert!(
             i < self.children_len(),
@@ -281,6 +328,13 @@ impl<V> Node<V> {
             ptr_data: new_ptr_data,
         };
 
+        // Safety:
+        // - `old_ptr.children_ptr().add(i).read()` is safe because `i` is a valid index
+        // - `copy_from` is safe because the source and destination pointers are valid and the length is correct
+        // - `realloc` is safe because `self.ptr` points to a valid allocation with `old_layout`
+        // - `new_ptr.write_value(value)` is safe because the space is allocated
+        // - `new_ptr.assume_init()` is safe because all parts of the node have been initialized
+        // - the pointer is assigned using `forget()` because we reallocated
         unsafe {
             // get child at i
             let removed_child = some!(old_ptr.children_ptr()).add(i).read();
@@ -314,6 +368,9 @@ impl<V> Node<V> {
     /// Sets the value of this node.
     pub fn set_value(&mut self, value: V) {
         // self.take_value();
+        // Safety:
+        // - `self.ptr` points to an allocation with the same valid layout it was allocated with
+        // - `value_ptr` correctly calculates the offset to the `Option<V>`
         unsafe {
             let ptr = self.ptr_data().value_ptr(self.ptr);
             let _ = ptr.replace(Some(value));
@@ -324,6 +381,8 @@ impl<V> Node<V> {
     /// and setting current node to have the suffix child plus optional `new_child`
     /// returns index of new_child (if Some(new_child) was passed)
     /// otherwise 0
+    /// # Safety:
+    /// - `position` must be a valid index within the label, i.e., `position < self.label_len()`
     pub(crate) unsafe fn split_at(&mut self, position: usize, new_child: Option<Node<V>>) -> usize {
         debug_assert!(
             position < self.label_len(),
@@ -331,6 +390,10 @@ impl<V> Node<V> {
         );
         let value = self.take_value();
 
+        // Safety:
+        // - `self.label().get_unchecked(position..)` is safe because `position` is checked to be within bounds
+        // - A new node `child` is allocated and correctly initialized with the suffix of the label and the old children
+        // - `copy_from_nonoverlapping` is safe because the source and destination are valid and do not overlap
         let child = unsafe {
             let suffix = self.label().get_unchecked(position..);
             let old_children_len = self.children_len();
@@ -363,6 +426,8 @@ impl<V> Node<V> {
         let new_layout = new_data.layout;
         let old_layout = self.ptr_data().layout;
 
+        // Safety:
+        // - `realloc` is safe because `self.ptr` points to a valid allocation with `old_layout`
         let mut new_ptr = unsafe {
             let new_ptr =
                 alloc::alloc::realloc(self.ptr.as_ptr().cast(), old_layout, new_layout.size())
@@ -375,6 +440,11 @@ impl<V> Node<V> {
                 ptr_data: new_data,
             }
         };
+        // Safety:
+        // - `new_ptr` is a valid pointer to a newly allocated block of memory
+        // - `new_ptr.write_children` is safe because the children array is valid and the space is allocated
+        // - `new_ptr.assume_init()` is safe because all parts of the node have been initialized
+        // - pointer is assigned to `self.ptr` using `forget()` because we `realloc`ated
         unsafe {
             new_ptr.write_header(new_hdr);
             // index of new_child

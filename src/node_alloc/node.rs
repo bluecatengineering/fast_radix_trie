@@ -26,12 +26,21 @@ pub struct Node<V> {
     pub(crate) _marker: PhantomData<V>,
 }
 
+// Safety:
+// - A `Node<V>` is safe to send across threads if `V` is `Send`
+// - The raw pointer is managed by this struct and not exposed
 unsafe impl<V: Send> Send for Node<V> {}
+// Safety:
+// - A `Node<V>` is safe to share across threads if `V` is `Sync`
+// - The raw pointer is managed by this struct and not exposed
 unsafe impl<V: Sync> Sync for Node<V> {}
 
 impl<V: Clone> Clone for Node<V> {
     fn clone(&self) -> Self {
         let mut new_ptr = self.ptr_data().allocate();
+        // Safety:
+        // - `new_ptr` is a freshly allocated and correctly aligned pointer from `allocate`
+        // - `new_ptr.assume_init()` is safe because all parts of the node have been initialized
         unsafe {
             new_ptr.write_header(*self.header());
             new_ptr.write_label(self.label());
@@ -73,6 +82,13 @@ impl<V> Node<V> {
             children_len: children.len() as u8,
         };
         let mut ptr = header.ptr_data().allocate();
+        // Safety:
+        // - `ptr` is a freshly allocated and correctly aligned pointer from `allocate`
+        // - `header` is a valid `NodeHeader`
+        // - `label` is a valid slice
+        // - `children` is a valid array of nodes
+        // - `value` is a valid `Option<V>`
+        // - All parts of the node are initialized before `assume_init` is called
         unsafe {
             ptr.write_header(header);
             ptr.write_label(label);
@@ -86,7 +102,12 @@ impl<V> Node<V> {
 
     /// Returns the reference to the value of this node.
     pub fn value(&self) -> Option<&V> {
+        // Safety:
+        // - `self.ptr` points to an allocation with the same valid layout it was allocated with
+        // - `value_ptr_init` correctly calculates the offset to the value if it is initialized
         if let Some(val) = unsafe { self.ptr_data().value_ptr_init(self.ptr) } {
+            // Safety:
+            // - `val` is a valid, non-null pointer to an initialized `V`
             return Some(unsafe { val.as_ref() });
         }
         None
@@ -94,7 +115,12 @@ impl<V> Node<V> {
 
     /// Returns the mutable reference to the value of this node.
     pub fn value_mut(&mut self) -> Option<&mut V> {
+        // Safety:
+        // - `self.ptr` points to an allocation with the same valid layout it was allocated with
+        // - `value_ptr_init` correctly calculates the offset to the value if it is initialized
         if let Some(mut val) = unsafe { self.ptr_data().value_ptr_init(self.ptr) } {
+            // Safety:
+            // - `val` is a valid, non-null pointer to an initialized `V`
             return Some(unsafe { val.as_mut() });
         }
         None
@@ -102,11 +128,19 @@ impl<V> Node<V> {
 
     /// Returns mutable references to the node itself with its sibling and child
     pub fn as_mut(&mut self) -> NodeMut<'_, V> {
+        // Safety:
+        // - `self.ptr` points to an allocation with the same valid layout it was allocated with
+        // - `value_ptr_init` correctly calculates the offset to the value if it is initialized
         let value = if let Some(mut value) = unsafe { self.ptr_data().value_ptr_init(self.ptr) } {
+            // Safety:
+            // - `value` is a valid, non-null pointer to an initialized `V`
             Some(unsafe { value.as_mut() })
         } else {
             None
         };
+        // Safety:
+        // - `self.ptr` points to an allocation with the same valid layout it was allocated with
+        // - `children_mut_opt` correctly calculates the offset using the same layout
         let children = unsafe { self.ptr_data().children_mut_opt(self.ptr) };
 
         NodeMut {
@@ -118,10 +152,18 @@ impl<V> Node<V> {
 
     /// Takes the value out of this node.
     pub fn take_value(&mut self) -> Option<V> {
+        // Safety:
+        // - `self.ptr` points to an allocation with the same valid layout it was allocated with
+        // - `take_value` will read the value if it exists and is initialized, and then update the flags
+        //   to mark it as not initialized, preventing a double-free
         unsafe { self.ptr_data().take_value(self.ptr) }
     }
-    /// adds child at i and shifts elements right
+    /// Adds child at i and shifts elements right
     /// child index must be at i <= len, len can be 0
+    ///
+    // # Safety:
+    // - `i` must be a valid index in the children array, i.e., `i <= self.children_len()`
+    // - `new_child` must be a valid `Node<V>`
     pub(crate) unsafe fn add_child(&mut self, new_child: Node<V>, i: usize) {
         debug_assert!(
             i <= self.children_len(),
@@ -142,6 +184,13 @@ impl<V> Node<V> {
         };
         let value = self.take_value();
 
+        // Safety:
+        // - `new_ptr` is freshly allocated with enough space for all elements
+        // - `old_ptr` is a valid pointer to the old node data
+        // - All `copy_from_nonoverlapping` calls have valid, non-overlapping source and destination pointers and correct counts
+        // - `new_child` is written to a valid, allocated memory location
+        // - The old node's value has been taken, so it's safe to deallocate the old node without dropping the value
+        // - `dealloc_forget` correctly deallocates the memory of the old node without calling `drop`
         unsafe {
             // update header value/label
             new_ptr.write_header(new_header);
@@ -205,6 +254,12 @@ impl<V> Node<V> {
         };
         let value = self.take_value();
 
+        // Safety:
+        // - `new_ptr` is freshly allocated with enough space for the new header, label, children, and value
+        // - `old_ptr` is a valid pointer to the old node data
+        // - All `copy_from_nonoverlapping` calls have valid, non-overlapping source and destination pointers and correct counts
+        // - The old node's value has been taken, so it's safe to deallocate the old node without dropping the value
+        // - `dealloc_forget` correctly deallocates the memory of the old node without calling `drop`
         unsafe {
             // update header value/label
             new_ptr.write_header(new_header);
@@ -245,6 +300,8 @@ impl<V> Node<V> {
 
     /// removes child at i and shifts elements left
     /// node must have children already
+    // # Safety:
+    // - `i` must be a valid index in the children array, i.e., `i < self.children_len()`
     pub(crate) unsafe fn remove_child(&mut self, i: usize) -> Node<V> {
         debug_assert!(
             i < self.children_len(),
@@ -266,6 +323,14 @@ impl<V> Node<V> {
         };
         let value = self.take_value();
 
+        // Safety:
+        // - `old_ptr` is a valid pointer to the old node data
+        // - `i` is a valid index, so `old_ptr.children_ptr().add(i)` is a valid pointer to the child to be removed
+        // - `read()` correctly takes ownership of the child node
+        // - `new_ptr` is freshly allocated with the correct size
+        // - All `copy_from_nonoverlapping` calls have valid, non-overlapping source and destination pointers and correct counts
+        // - The old node's value has been taken, so it's safe to deallocate the old node without dropping the value
+        // - `dealloc_forget` correctly deallocates the memory of the old node without calling `drop`
         unsafe {
             // get child at i
             let removed_child = some!(old_ptr.children_ptr()).add(i).read();
@@ -302,8 +367,14 @@ impl<V> Node<V> {
     /// Sets the value of this node.
     pub fn set_value(&mut self, value: V) {
         self.take_value();
+        // Safety:
+        // - `self.ptr` points to an allocation with the same valid layout it was allocated with
+        // - `value_ptr_alloc` correctly calculates the offset to the value if space is allocated
         if let Some(ptr) = unsafe { self.ptr_data().value_ptr_alloc(self.ptr) } {
             self.set_flags(Flags::VALUE_INITIALIZED, true);
+            // Safety:
+            // - `ptr` is a valid, non-null pointer to an allocated but uninitialized `V`
+            // - `write` correctly initializes the value
             unsafe {
                 ptr.write(value);
             }
@@ -324,6 +395,12 @@ impl<V> Node<V> {
             // allocate space for new node
             let mut new_ptr = new_header.ptr_data().allocate();
 
+            // Safety:
+            // - `new_ptr` is freshly allocated with enough space for all elements
+            // - `old_ptr` is a valid pointer to the old node data
+            // - All `copy_from_nonoverlapping` calls have valid, non-overlapping source and destination pointers and correct counts
+            // - The old node's value has been taken, so it's safe to deallocate the old node without dropping the value
+            // - `dealloc_forget` correctly deallocates the memory of the old node without calling `drop`
             unsafe {
                 // copy header
                 new_ptr.write_header(new_header);
@@ -356,6 +433,9 @@ impl<V> Node<V> {
     /// and setting current node to have the suffix child plus optional `new_child`
     /// returns index of new_child (if Some(new_child) was passed)
     /// otherwise 0
+    // Safety:
+    // - `position` must be a valid index within the label, i.e., `position < self.label_len()`
+    // - `new_child` must be a valid `Option<Node<V>>`
     pub(crate) unsafe fn split_at(&mut self, position: usize, new_child: Option<Node<V>>) -> usize {
         debug_assert!(
             position < self.label_len(),

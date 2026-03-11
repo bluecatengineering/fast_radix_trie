@@ -90,16 +90,30 @@ pub(crate) struct NodePtrAndData<V> {
 }
 
 impl<V> NodePtrAndData<V> {
+    /// # Safety:
+    /// - The value we are writing is within the bounds of the buffer allocated by the layout
+    /// - The caller must have exclusive access to the buffer
+    /// - The pointer is well aligned for the header values
     #[inline]
     pub(crate) unsafe fn write_header(&mut self, header: NodeHeader) {
         unsafe { self.ptr.write(header) }
     }
+
+    /// # Safety:
+    /// - The value we are writing is within the bounds of the buffer allocated by the layout
+    /// - The caller must have exclusive access to the buffer
+    /// - The pointer is well aligned for the value
     #[inline]
     pub unsafe fn write_value(&mut self, value: V) {
         if let Some(offset) = self.ptr_data.value_offset {
             unsafe { ptr::write(self.ptr.byte_add(offset).cast().as_ptr(), value) }
         }
     }
+
+    /// # Safety:
+    /// - The value we are writing is within the bounds of the buffer allocated by the layout
+    /// - The caller must have exclusive access to the buffer
+    /// - The pointer is well aligned for the children values
     #[inline]
     pub(crate) unsafe fn write_children<const N: usize>(&mut self, children: [Node<V>; N]) {
         if let Some(children_offset) = self.ptr_data.children_offset {
@@ -112,10 +126,15 @@ impl<V> NodePtrAndData<V> {
         }
     }
 
+    /// # Safety:
+    /// - ptr was properly allocated with correct layout for children values
     #[inline]
     pub(crate) unsafe fn children_ptr(&self) -> Option<NonNull<Node<V>>> {
         unsafe { self.ptr_data.children_ptr(self.ptr) }
     }
+
+    /// # Safety:
+    /// - ptr was properly allocated with correct layout for value
     #[allow(unused)]
     #[inline]
     pub(crate) unsafe fn value_ptr(&self) -> Option<NonNull<V>> {
@@ -319,6 +338,9 @@ impl<V> PtrData<V> {
     pub unsafe fn value_ptr_init(&self, header_ptr: NonNull<NodeHeader>) -> Option<NonNull<V>> {
         unsafe { self.value_ptr(header_ptr, Flags::VALUE_INITIALIZED) }
     }
+    /// # Safety:
+    /// - header was properly allocated with valid layout
+    /// - flags set indicating whether value was initialized or allocated
     #[inline]
     unsafe fn value_ptr(
         &self,
@@ -334,6 +356,9 @@ impl<V> PtrData<V> {
         None
     }
 
+    /// # Safety:
+    /// - header was properly allocated with valid layout
+    /// - flags set indicating whether value was initialized or allocated
     #[inline]
     pub(crate) unsafe fn children_mut_opt<'a>(
         &self,
