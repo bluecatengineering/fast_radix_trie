@@ -33,6 +33,10 @@ impl<V> Node<V> {
 
     /// Returns the label of this node.
     pub fn label(&self) -> &[u8] {
+        // Safety:
+        // - `self.ptr` must point to a valid allocation created via NodeHeader::ptr_data().allocate()
+        // - The allocation must still be valid and not deallocated
+        // - The label region within the allocation must have been initialized
         unsafe { PtrData::<V>::label(self.ptr) }
     }
 
@@ -44,18 +48,32 @@ impl<V> Node<V> {
 
     #[allow(unused)]
     pub(crate) fn label_mut(&mut self) -> &mut [u8] {
+        // Safety:
+        // - `self.ptr` must point to a valid allocation created via NodeHeader::ptr_data().allocate()
+        // - The allocation must still be valid and not deallocated
+        // - The label region within the allocation must have been initialized
+        // - We have exclusive access to this node via `&mut self`
         unsafe { PtrData::<V>::label_mut(self.ptr) }
     }
 
     /// Returns a reference to the header for this node.
     #[inline]
     pub(crate) fn header(&self) -> &NodeHeader {
+        // Safety:
+        // - `self.ptr` is guaranteed to be properly aligned and point to a valid NodeHeader
+        // - The NodeHeader was initialized during node allocation and remains valid
+        // - The pointer is not null (NonNull invariant)
         unsafe { self.ptr.as_ref() }
     }
 
     #[allow(unused)]
     #[inline]
     pub(crate) fn header_mut(&mut self) -> &mut NodeHeader {
+        // Safety:
+        // - `self.ptr` is guaranteed to be properly aligned and point to a valid NodeHeader
+        // - The NodeHeader was initialized during node allocation and remains valid
+        // - The pointer is not null (NonNull invariant)
+        // - We have exclusive access to this node via `&mut self`
         unsafe { self.ptr.as_mut() }
     }
     /// Returns the layout and field offsets for the allocated buffer backing this node.
@@ -67,11 +85,22 @@ impl<V> Node<V> {
     /// get all children for node as slice
     #[inline]
     pub fn children(&self) -> &[Node<V>] {
+        // Safety:
+        // - `self.ptr` points to a valid allocation with the layout specified in `ptr_data()`
+        // - The children array, if present, was initialized during node creation
+        // - The offset calculation in `children()` is correct for this node's layout
+        // - The slice length matches the `children_len` in the header
         unsafe { self.ptr_data().children(self.ptr) }
     }
     /// get all children for node as mut slice
     #[inline]
     pub(crate) fn children_mut(&mut self) -> &mut [Node<V>] {
+        // Safety:
+        // - `self.ptr` points to a valid allocation with the layout specified in `ptr_data()`
+        // - The children array, if present, was initialized during node creation
+        // - The offset calculation in `children_mut()` is correct for this node's layout
+        // - The slice length matches the `children_len` in the header
+        // - We have exclusive access to this node via `&mut self`
         unsafe { self.ptr_data().children_mut(self.ptr) }
     }
     /// return the first byte of each childs label
@@ -91,6 +120,12 @@ impl<V> Node<V> {
             return None;
         }
         let mut ret = Vec::with_capacity(len);
+        // Safety:
+        // - `children_ptr()` returns a valid pointer when children_len > 0
+        // - `ptr.add(i).read()` is safe for i in 0..len as the children array has exactly `len` initialized elements
+        // - After reading all children, we create a new node without children and swap it in
+        // - `dealloc_forget` is safe because the children have been moved to `ret` and won't be double-dropped
+        // - The old allocation is deallocated, but its contents (children) are not dropped since we use `dealloc_forget`
         unsafe {
             let ptr = self.ptr_data().children_ptr(self.ptr).unwrap();
             for i in 0..len {
@@ -170,12 +205,16 @@ impl<V> Node<V> {
 
     pub(crate) fn child_with_first(&self, byte: u8) -> Option<&Self> {
         let i = self.child_index_with_first(byte)?;
-        // SAFETY: we know i is inside the bounds already
+        // Safety:
+        // - `child_index_with_first` returns an index within bounds (i < children_len)
+        // - `get_unchecked` is safe because `i` is a valid index into the children slice
         Some(unsafe { self.children().get_unchecked(i) })
     }
     pub(crate) fn child_with_first_mut(&mut self, byte: u8) -> Option<&mut Self> {
         let i = self.child_index_with_first(byte)?;
-        // SAFETY: we know i is inside the bounds already
+        // Safety:
+        // - `child_index_with_first` returns an index within bounds (i < children_len)
+        // - `get_unchecked_mut` is safe because `i` is a valid index into the children slice
         Some(unsafe { self.children_mut().get_unchecked_mut(i) })
     }
     pub(crate) fn child_index_with_first(&self, byte: u8) -> Option<usize> {
@@ -313,6 +352,10 @@ impl<V> Node<V> {
             }
         }
         // parent should always point to something
+        // Safety:
+        // - `parent` points to a valid Node<V> that was obtained from `&raw mut *cur` earlier
+        // - The pointer remains valid because we haven't moved or deallocated the node
+        // - We have exclusive access through the original `&mut self` parameter
         let parent = unsafe { &mut *parent };
 
         // SAFETY: using `cur` after mutating parent can cause UB
@@ -322,6 +365,11 @@ impl<V> Node<V> {
         let child = &mut parent.children_mut()[child_index];
         // if prefix ends mid label then we must split the node
         if !suffix.is_empty() && suffix.len() < child.label_len() {
+            // Safety:
+            // - `split_at(suffix.len(), None)` is safe because suffix.len() < child.label_len()
+            // - `remove_child(0)` is safe because split_at creates a new child
+            // - `remove_child(child_index)` is safe because child_index is a valid index
+            // - These operations maintain all node invariants
             unsafe {
                 // split node so we can set label properly
                 child.split_at(suffix.len(), None);
@@ -337,6 +385,9 @@ impl<V> Node<V> {
             }
         } else if suffix == child.label() {
             // we are at a leaf
+            // Safety:
+            // - `remove_child(child_index)` is safe because child_index is a valid index
+            // - The child at child_index is the one we've been working with
             unsafe {
                 let detached = parent.remove_child(child_index);
                 parent.try_merge_child();
@@ -344,6 +395,8 @@ impl<V> Node<V> {
             }
         } else if suffix.is_empty() {
             // full match on node
+            // Safety:
+            // - `remove_child(child_index)` is safe because child_index is a valid index
             let mut detached = unsafe { parent.remove_child(child_index) };
             detached.replace_label(key);
             parent.try_merge_child();
@@ -372,6 +425,9 @@ impl<V> Node<V> {
                 return matched_len;
             }
 
+            // Safety:
+            // - We just checked that key is not empty, so indexing at 0 is safe
+            // - `get_unchecked(0)` is safe because we verified key.is_empty() is false
             match cur.child_with_first(unsafe { *key.get_unchecked(0) }) {
                 None => return matched_len,
                 Some(child) => {
@@ -404,6 +460,9 @@ impl<V> Node<V> {
                 return last_match;
             }
 
+            // Safety:
+            // - We just checked that key is not empty, so indexing at 0 is safe
+            // - `get_unchecked(0)` is safe because we verified key.is_empty() is false
             match cur.child_with_first(unsafe { *key.get_unchecked(0) }) {
                 None => return last_match,
                 Some(child) => {
@@ -432,10 +491,18 @@ impl<V> Node<V> {
                 last_match = Some((matched_len, cur));
             }
             if key.is_empty() {
+                // Safety:
+                // - We're converting the raw pointer back to a mutable reference
+                // - The pointer came from `cur` which was a valid &mut reference
+                // - No aliasing occurs because we only dereference when returning
                 return last_match.map(|(len, ptr)| unsafe { (len, &mut *ptr) });
             }
+            // Safety:
+            // - We just checked that key is not empty, so indexing at 0 is safe
+            // - `get_unchecked(0)` is safe because we verified key.is_empty() is false
             match cur.child_with_first_mut(unsafe { *key.get_unchecked(0) }) {
                 None => {
+                    // Safety: same as above
                     return last_match.map(|(len, ptr)| unsafe { (len, &mut *ptr) });
                 }
                 Some(child) => {
@@ -454,7 +521,9 @@ impl<V> Node<V> {
             return self.take_value();
         }
         let i = self.child_index_with_first(*key.first()?)?;
-        // SAFETY: we know child is in bounds
+        // Safety:
+        // - `i` is a valid index returned by `child_index_with_first`
+        // - `get_unchecked_mut(i)` is safe because `i < children_len()`
         let child = unsafe { self.children_mut().get_unchecked_mut(i) };
 
         let remaining = crate::strip_prefix(key, child.label())?;
@@ -463,7 +532,9 @@ impl<V> Node<V> {
             let val = child.take_value();
             if child.children().is_empty() {
                 // the child is a leaf so remove
-                // SAFETY: we know i is in bounds
+                // Safety:
+                // - `i` is a valid index (we got it from `child_index_with_first`)
+                // - `remove_child(i)` is safe because i < children_len()
                 unsafe {
                     self.remove_child(i);
                 }
@@ -490,13 +561,17 @@ impl<V> Node<V> {
             ptr: self.ptr,
             ptr_data: self.ptr_data(),
         };
-        // SAFETY: we know there is exactly 1 child
+        // Safety:
+        // - We know there is exactly 1 child (checked by the if condition)
+        // - `children_ptr().unwrap()` is safe because children_len() == 1
+        // - `read()` transfers ownership of the child node to `child`
         let mut child: Node<V> = unsafe { some!(old_parent.children_ptr()).read() };
         // merge child label
         child.prefix_label(self.label());
-        // SAFETY:
-        // - dealloc old node and set child to parent
-        // - dont drop children or data since they were copied
+        // Safety:
+        // - We're deallocating the old parent node but not dropping its contents
+        // - The child has been moved out via `read()` so it won't be double-freed
+        // - `dealloc_forget` is appropriate here because we've transferred ownership of the child
         unsafe {
             old_parent.ptr_data.dealloc_forget(old_parent.ptr);
         }
@@ -515,18 +590,28 @@ impl<V> Node<V> {
             let (n, next) = crate::lcp_by4(cur.label(), key);
             if next.is_some() {
                 // new child from common prefix that needs split at n
+                // Safety:
+                // - `split_at_unchecked(n)` is safe because `n` is the length of the longest common prefix
+                // - `n < key.len()` is guaranteed because next.is_some() means there's a mismatch
                 let (_, new_suffix) = unsafe { key.split_at_unchecked(n) };
                 let new_child = Node::new(new_suffix, [], None);
                 // get back index of new_child
+                // Safety:
+                // - `split_at(n, Some(new_child))` is safe because n <= cur.label_len() (from lcp_by4)
                 let idx = unsafe { cur.split_at(n, Some(new_child)) };
                 return Entry::Vacant(VacantEntry {
                     // return new_child as current node so caller can insert
+                    // Safety:
+                    // - `idx` is a valid index returned by `split_at`
+                    // - `get_unchecked_mut(idx)` is safe because idx < children_len()
                     node: unsafe { cur.children_mut().get_unchecked_mut(idx) },
                 });
             } else {
                 // new child needed but next element doesn't exist
                 match key.len().cmp(&cur.label_len()) {
                     Ordering::Less => {
+                        // Safety:
+                        // - `split_at(key.len(), None)` is safe because key.len() < cur.label_len()
                         unsafe { cur.split_at(key.len(), None) };
                         // cur.set_value(val);
                         return Entry::Vacant(VacantEntry { node: cur });
@@ -562,6 +647,10 @@ impl<V> Node<V> {
                                 // the first chunk and chain the labels together
                                 if (n == 0 || n == MAX_LABEL_LEN) && key.len() > MAX_LABEL_LEN {
                                     let child: Node<V> = Node::new(&key[..MAX_LABEL_LEN], [], None);
+                                    // Safety:
+                                    // - `insert_index <= children_len()` (from the computation above)
+                                    // - `add_child` is safe when i <= children_len() and children_len() < u8::MAX
+                                    // - `get_unchecked_mut(insert_index)` is safe because add_child guarantees the child exists at insert_index
                                     unsafe {
                                         cur.add_child(child, insert_index);
                                         cur = cur.children_mut().get_unchecked_mut(insert_index)
@@ -570,7 +659,10 @@ impl<V> Node<V> {
                                 } else {
                                     // we now have index of where we can insert
                                     let child = Node::new(key, [], None);
-                                    // SAFETY: insert_index must be <= children len
+                                    // Safety:
+                                    // - `insert_index <= children_len()` (from the computation above)
+                                    // - `add_child` is safe when i <= children_len() and children_len() < u8::MAX
+                                    // - `get_unchecked_mut(insert_index)` is safe because add_child guarantees the child exists at insert_index
                                     unsafe {
                                         cur.add_child(child, insert_index);
                                     }
@@ -591,7 +683,8 @@ impl<V> Node<V> {
     /// insert key and value into node, replacing value if key exists
     /// could be re-written to use `Entry` but the non-entry version is 5-10% faster
     /// so I'm leaving this for now
-    /// SAFETY:
+    ///
+    /// # Safety
     /// caller must not insert an empty label into children. only the root node can have an empty label
     pub fn insert<K: ?Sized + BorrowedBytes>(&mut self, key: &K, value: V) -> Option<V> {
         let mut cur = self;
@@ -600,8 +693,13 @@ impl<V> Node<V> {
             let (n, next) = crate::lcp_by4(cur.label(), key);
             if next.is_some() {
                 // new child from common prefix that needs split at n
+                // Safety:
+                // - `split_at_unchecked(n)` is safe because `n` is the length of the longest common prefix
+                // - `n < key.len()` is guaranteed because next.is_some() means there's a mismatch
                 let (_, new_suffix) = unsafe { key.split_at_unchecked(n) };
                 let new_child = Node::new(new_suffix, [], Some(value));
+                // Safety:
+                // - `split_at(n, Some(new_child))` is safe because n <= cur.label_len() (from lcp_by4)
                 unsafe {
                     cur.split_at(n, Some(new_child));
                 }
@@ -610,6 +708,8 @@ impl<V> Node<V> {
                 // new child needed but next element doesn't exist
                 match key.len().cmp(&cur.label_len()) {
                     Ordering::Less => {
+                        // Safety:
+                        // - `split_at(key.len(), None)` is safe because key.len() < cur.label_len()
                         unsafe { cur.split_at(key.len(), None) };
                         cur.set_value(value);
                         return None;
@@ -622,11 +722,16 @@ impl<V> Node<V> {
                     }
                     Ordering::Greater => {
                         // prefix match but key is longer, so we need to insert into a child
+                        // Safety:
+                        // - `get_unchecked(cur.label_len()..)` is safe because key.len() > cur.label_len()
+                        // - This ensures cur.label_len() is a valid index within key
                         key = unsafe { key.get_unchecked(cur.label_len()..) };
                         let first_byte = key[0];
                         match cur.child_index_with_first(first_byte) {
                             Some(i) => {
-                                // SAFETY: we just checked i is in range
+                                // Safety:
+                                // - `i` is a valid index returned by `child_index_with_first`
+                                // - `get_unchecked_mut(i)` is safe because i < children_len()
                                 cur = unsafe { cur.children_mut().get_unchecked_mut(i) };
                                 continue;
                             }
@@ -645,6 +750,10 @@ impl<V> Node<V> {
                                 // the first chunk and chain the labels together
                                 if (n == 0 || n == MAX_LABEL_LEN) && key.len() > MAX_LABEL_LEN {
                                     let child: Node<V> = Node::new(&key[..MAX_LABEL_LEN], [], None);
+                                    // Safety:
+                                    // - `insert_index <= children_len()` (from the computation above)
+                                    // - `add_child` is safe when i <= children_len() and children_len() < u8::MAX
+                                    // - `get_unchecked_mut(insert_index)` is safe because add_child guarantees the child exists at insert_index
                                     unsafe {
                                         cur.add_child(child, insert_index);
                                         cur = cur.children_mut().get_unchecked_mut(insert_index)
@@ -653,7 +762,9 @@ impl<V> Node<V> {
                                 } else {
                                     // we now have index of where we can insert
                                     let child = Node::new(key, [], Some(value));
-                                    // SAFETY: insert_index must be <= children len
+                                    // Safety:
+                                    // - `insert_index <= children_len()` (from the computation above)
+                                    // - `add_child` is safe when i <= children_len() and children_len() < u8::MAX
                                     unsafe {
                                         cur.add_child(child, insert_index);
                                     }

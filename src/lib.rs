@@ -114,7 +114,9 @@ impl BorrowedBytes for str {
 #[inline(always)]
 pub fn strip_prefix<'a>(haystack: &'a [u8], prefix: &[u8]) -> Option<&'a [u8]> {
     if memchr::arch::all::is_prefix(haystack, prefix) {
-        // SAFETY: we know prefix is a prefix of haystack so len is less than haystack
+        // Safety:
+        // - `is_prefix` ensures that `prefix.len() <= haystack.len()`
+        // - Therefore, slicing `haystack` from `prefix.len()` is guaranteed to be in bounds
         unsafe { Some(haystack.get_unchecked(prefix.len()..)) }
     } else {
         None
@@ -130,7 +132,12 @@ pub fn longest_common_prefix_by_byte(a: &[u8], b: &[u8]) -> (usize, Option<Order
     let cmp = if a.is_empty() || b.is_empty() || i >= min_len {
         None
     } else {
-        // SAFETY: i is less than min_len
+        // Safety:
+        // - `i` is the count of matching elements from zip, so i <= min_len
+        // - The condition `i >= min_len` is false, so i < min_len
+        // - min_len <= a.len() and min_len <= b.len()
+        // - Therefore i < a.len() and i < b.len()
+        // - `get_unchecked(i)` is safe for both a and b
         unsafe { Some(a.get_unchecked(i).cmp(b.get_unchecked(i))) }
     };
     (i, cmp)
@@ -160,7 +167,11 @@ macro_rules! fn_lcp {
             }
             // process remaining bytes less than CHUNK_LEN - one at a time
             while i < min_len {
-                // SAFETY: we know i is less than min_len
+                // Safety:
+                // - Loop condition ensures i < min_len
+                // - min_len = min(a.len(), b.len())
+                // - Therefore i < a.len() and i < b.len()
+                // - `get_unchecked(i)` is safe for both a and b
                 let a_byte = unsafe { a.get_unchecked(i) };
                 let b_byte = unsafe { b.get_unchecked(i) };
                 if a_byte != b_byte {

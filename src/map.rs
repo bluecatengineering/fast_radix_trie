@@ -947,6 +947,10 @@ mod tests {
         let results = t
             .common_prefixes(b"abc")
             .flat_map(|(k, v)| {
+                // Safety:
+                // - In this test, all keys are valid UTF-8 strings (inserted as &str)
+                // - `from_utf8_unchecked` is safe here because we control the input data
+                // - This is only used for debug printing in tests
                 unsafe {
                     println!("{:?}", core::str::from_utf8_unchecked(k));
                 }
