@@ -692,18 +692,31 @@ impl<V> Node<V> {
         loop {
             let (n, next) = crate::lcp_by4(cur.label(), key);
             if next.is_some() {
-                // new child from common prefix that needs split at n
                 // Safety:
-                // - `split_at_unchecked(n)` is safe because `n` is the length of the longest common prefix
-                // - `n < key.len()` is guaranteed because next.is_some() means there's a mismatch
-                let (_, new_suffix) = unsafe { key.split_at_unchecked(n) };
-                let new_child = Node::new(new_suffix, [], Some(value));
-                // Safety:
-                // - `split_at(n, Some(new_child))` is safe because n <= cur.label_len() (from lcp_by4)
-                unsafe {
-                    cur.split_at(n, Some(new_child));
+                //   - `get_unchecked(n..)` is safe because `n` is the length of the LCP.
+                //   - `n < key.len()` is guaranteed because `next.is_some()` means there's
+                //     a mismatch.
+                key = unsafe { key.get_unchecked(n..) };
+                if key.len() > MAX_LABEL_LEN {
+                    let child: Node<V> = Node::new(&key[..MAX_LABEL_LEN], [], None);
+                    // Safety:
+                    //   - `split_at(n, Some(child))` is safe because n <= cur.label_len()
+                    //     (from lcp_by4).
+                    //   - `cur.children_mut().get_unchecked_mut(index)` is safe because
+                    //     `index` is guaranteed valid by `split_at`.
+                    unsafe {
+                        let index = cur.split_at(n, Some(child));
+                        cur = cur.children_mut().get_unchecked_mut(index);
+                    };
+                    continue
+                } else {
+                    let new_child = Node::new(key, [], Some(value));
+                    // Safety:
+                    //   - `split_at(n, Some(new_child))` is safe because n <= cur.label_len()
+                    //     (from lcp_by4).
+                    unsafe { cur.split_at(n, Some(new_child)) };
+                    return None;
                 }
-                return None;
             } else {
                 // new child needed but next element doesn't exist
                 match key.len().cmp(&cur.label_len()) {
@@ -748,7 +761,7 @@ impl<V> Node<V> {
                                 // if key is bigger than max len and there's no common prefix
                                 // or the previous length was 255, we need to split off
                                 // the first chunk and chain the labels together
-                                if (n == 0 || n == MAX_LABEL_LEN) && key.len() > MAX_LABEL_LEN {
+                                if key.len() > MAX_LABEL_LEN {
                                     let child: Node<V> = Node::new(&key[..MAX_LABEL_LEN], [], None);
                                     // Safety:
                                     // - `insert_index <= children_len()` (from the computation above)
@@ -1501,6 +1514,42 @@ mod tests {
         assert_eq!(node.get("1"), Some(&1));
         node.insert("2", 2);
         assert_eq!(node.get("2"), Some(&2));
+    }
+
+    #[test]
+    fn test_insert_partial_prefix_match_and_long_suffix_label() {
+        let mut node = Node::root();
+
+        // insert 000...0 with length 10.
+        let label = [b'0'; 10];
+
+        node.insert(&label[..], 1);
+        assert_eq!(node.get(&label[..]), Some(&1));
+
+        // insert 000...1111 sharing first 5 bytes and spanning > 255 bytes of suffix.
+        let mut label = [b'0'; 5].to_vec();
+        label.extend(b"1".repeat(300));
+
+        node.insert(&label[..], 2);
+        assert_eq!(node.get(label.as_slice()), Some(&2));
+    }
+
+    #[test]
+    fn test_insert_total_prefix_match_and_long_suffix_label() {
+        let mut node = Node::root();
+
+        // insert 000...0 with length 10.
+        let label = [b'0'; 10];
+
+        node.insert(&label[..], 1);
+        assert_eq!(node.get(&label[..]), Some(&1));
+
+        // insert 000...1111 with 1s suffix extending after the original 10 bytes.
+        let mut label = [b'0'; 10].to_vec();
+        label.extend(b"1".repeat(300));
+
+        node.insert(&label[..], 2);
+        assert_eq!(node.get(label.as_slice()), Some(&2));
     }
 
     #[test]
