@@ -247,6 +247,30 @@ impl<T: Bytes> GenericRadixSet<T> {
     pub fn iter(&self) -> Iter<'_, T> {
         Iter(self.map.keys())
     }
+
+    /// Gets an iterator over entries matching a wildcard pattern.
+    ///
+    /// The pattern supports:
+    /// - `*` matches one or more characters
+    /// - `?` matches exactly one character
+    /// - Any other byte matches literally
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use fast_radix_trie::RadixSet;
+    ///
+    /// let mut set = RadixSet::new();
+    /// set.insert("foo.bar.com");
+    /// set.insert("foo.baz.com");
+    /// set.insert("hello.world");
+    ///
+    /// let matches: Vec<_> = set.wildcard_iter(b"foo.*.com").collect();
+    /// assert_eq!(matches.len(), 2);
+    /// ```
+    pub fn wildcard_iter<'a, 'b>(&'a self, pattern: &'b [u8]) -> WildcardIter<'a, 'b, T> {
+        WildcardIter(self.map.wildcard_iter(pattern))
+    }
 }
 
 impl<T: Bytes> GenericRadixSet<T> {
@@ -332,6 +356,16 @@ impl<T: Bytes> Iterator for Iter<'_, T> {
     type Item = T;
     fn next(&mut self) -> Option<Self::Item> {
         self.0.next()
+    }
+}
+
+/// An Iterator over a `RadixSet`'s items matching a wildcard pattern.
+#[derive(Debug)]
+pub struct WildcardIter<'a, 'b, T>(map::WildcardIter<'a, 'b, T, ()>);
+impl<T: Bytes> Iterator for WildcardIter<'_, '_, T> {
+    type Item = T;
+    fn next(&mut self) -> Option<Self::Item> {
+        self.0.next().map(|(k, _)| k)
     }
 }
 

@@ -479,6 +479,33 @@ fn bench_long_remove(c: &mut Criterion) {
     group.finish();
 }
 
+// wildcard iterator
+fn bench_domains_wildcard(c: &mut Criterion) {
+    let mut group = c.benchmark_group("domains wildcard iterator");
+
+    let words = get_domain_text();
+    let trie = make_my_trie(&words);
+
+    // domains are stored reversed
+    group.bench_function("many entries - wildcard *.com (moc.*)", |b| {
+        b.iter(|| trie.wildcard_iter(black_box(b"moc.*")).collect::<Vec<_>>())
+    });
+
+    // baseline: iter_prefix over "moc." collects the same .com entries without wildcard overhead
+    group.bench_function("many entries BASELINE - iter_prefix .com (moc.)", |b| {
+        b.iter(|| {
+            trie.iter_prefix(black_box(b"moc." as &[u8]))
+                .collect::<Vec<_>>()
+        })
+    });
+
+    group.bench_function("fewer entries - wildcard *.cc (cc.*)", |b| {
+        b.iter(|| trie.wildcard_iter(black_box(b"cc.*")).collect::<Vec<_>>())
+    });
+
+    group.finish();
+}
+
 criterion_group!(
     benches,
     bench_longest_common_prefix,
@@ -508,4 +535,12 @@ criterion_group!(
     bench_long_remove
 );
 
-criterion_main!(benches, bench_insert, bench_get, bench_remove);
+criterion_group!(bench_wildcard, bench_domains_wildcard);
+
+criterion_main!(
+    benches,
+    bench_insert,
+    bench_get,
+    bench_remove,
+    bench_wildcard
+);
