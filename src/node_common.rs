@@ -557,6 +557,13 @@ impl<V> Node<V> {
         if self.value().is_some() || self.children_len() != 1 {
             return;
         }
+        // Do not merge if the combined label would exceed the per-node maximum.
+        // Chain nodes (label > MAX_LABEL_LEN split across multiple nodes) must
+        // stay split; merging them would silently truncate the label via `as u8`.
+        let child_label_len = self.children()[0].label_len();
+        if self.label_len() + child_label_len > MAX_LABEL_LEN {
+            return;
+        }
         let old_parent = crate::NodePtrAndData {
             ptr: self.ptr,
             ptr_data: self.ptr_data(),
@@ -593,19 +600,23 @@ impl<V> Node<V> {
                 // Safety:
                 // - `split_at_unchecked(n)` is safe because `n` is the length of the longest common prefix
                 // - `n < key.len()` is guaranteed because next.is_some() means there's a mismatch
+                //
+                // Split cur at the common prefix length and insert the first chunk of the
+                // suffix as a new child. Then point cur at that child and key at the full
+                // suffix and continue the loop
                 let (_, new_suffix) = unsafe { key.split_at_unchecked(n) };
-                let new_child = Node::new(new_suffix, [], None);
-                // get back index of new_child
+                let first_chunk = &new_suffix[..new_suffix.len().min(MAX_LABEL_LEN)];
+                let new_child = Node::new(first_chunk, [], None);
                 // Safety:
                 // - `split_at(n, Some(new_child))` is safe because n <= cur.label_len() (from lcp_by4)
                 let idx = unsafe { cur.split_at(n, Some(new_child)) };
-                return Entry::Vacant(VacantEntry {
-                    // return new_child as current node so caller can insert
-                    // Safety:
-                    // - `idx` is a valid index returned by `split_at`
-                    // - `get_unchecked_mut(idx)` is safe because idx < children_len()
-                    node: unsafe { cur.children_mut().get_unchecked_mut(idx) },
-                });
+                // Safety:
+                // - `idx` is a valid index returned by `split_at`
+                // - `get_unchecked_mut(idx)` is safe because idx < children_len()
+
+                cur = unsafe { cur.children_mut().get_unchecked_mut(idx) };
+                key = new_suffix;
+                continue;
             } else {
                 // new child needed but next element doesn't exist
                 match key.len().cmp(&cur.label_len()) {
@@ -645,7 +656,7 @@ impl<V> Node<V> {
                                 // if key is bigger than max len and there's no common prefix
                                 // or the previous length was 255, we need to split off
                                 // the first chunk and chain the labels together
-                                if (n == 0 || n == MAX_LABEL_LEN) && key.len() > MAX_LABEL_LEN {
+                                if key.len() > MAX_LABEL_LEN {
                                     let child: Node<V> = Node::new(&key[..MAX_LABEL_LEN], [], None);
                                     // Safety:
                                     // - `insert_index <= children_len()` (from the computation above)
@@ -697,7 +708,7 @@ impl<V> Node<V> {
                 // - `split_at_unchecked(n)` is safe because `n` is the length of the longest common prefix
                 // - `n < key.len()` is guaranteed because next.is_some() means there's a mismatch
                 let (_, new_suffix) = unsafe { key.split_at_unchecked(n) };
-                let new_child = Node::new(new_suffix, [], Some(value));
+                let new_child = Self::new_chained(new_suffix, value);
                 // Safety:
                 // - `split_at(n, Some(new_child))` is safe because n <= cur.label_len() (from lcp_by4)
                 unsafe {
@@ -748,7 +759,7 @@ impl<V> Node<V> {
                                 // if key is bigger than max len and there's no common prefix
                                 // or the previous length was 255, we need to split off
                                 // the first chunk and chain the labels together
-                                if (n == 0 || n == MAX_LABEL_LEN) && key.len() > MAX_LABEL_LEN {
+                                if key.len() > MAX_LABEL_LEN {
                                     let child: Node<V> = Node::new(&key[..MAX_LABEL_LEN], [], None);
                                     // Safety:
                                     // - `insert_index <= children_len()` (from the computation above)
@@ -1487,6 +1498,45 @@ mod tests {
 
         assert_eq!(node.remove(&label[..]), Some(6));
         assert_eq!(node.remove(&[b'1'; 240]), Some(5));
+        dbg!(&node);
+    }
+
+    #[test]
+    fn test_insert_partial_prefix_match_and_long_suffix_label() {
+        let mut node = Node::root();
+
+        // insert 000...0 with length 10.
+        let label = [b'0'; 10];
+
+        node.insert(&label[..], 1);
+        assert_eq!(node.get(&label[..]), Some(&1));
+
+        // insert 000...1111 sharing first 5 bytes and spanning > 255 bytes of suffix.
+        let mut label = [b'0'; 5].to_vec();
+        label.extend(b"1".repeat(300));
+
+        node.insert(&label[..], 2);
+        assert_eq!(node.get(label.as_slice()), Some(&2));
+        dbg!(&node);
+    }
+
+    #[test]
+    fn test_insert_total_prefix_match_and_long_suffix_label() {
+        let mut node = Node::root();
+
+        // insert 000...0 with length 10.
+        let label = [b'0'; 10];
+
+        node.insert(&label[..], 1);
+        assert_eq!(node.get(&label[..]), Some(&1));
+
+        // insert 000...1111 with 1s suffix extending after the original 10 bytes.
+        let mut label = [b'0'; 10].to_vec();
+        label.extend(b"1".repeat(300));
+
+        node.insert(&label[..], 2);
+        assert_eq!(node.get(label.as_slice()), Some(&2));
+        dbg!(&node);
     }
 
     #[test]
@@ -1501,6 +1551,115 @@ mod tests {
         assert_eq!(node.get("1"), Some(&1));
         node.insert("2", 2);
         assert_eq!(node.get("2"), Some(&2));
+    }
+
+    // Two long labels that share no common prefix — each becomes an independent chain.
+    #[test]
+    fn test_two_disjoint_long_labels() {
+        let mut node = Node::root();
+        let a = [b'a'; 300];
+        let b = [b'b'; 300];
+        node.insert(&a[..], 1);
+        node.insert(&b[..], 2);
+        assert_eq!(node.get(&a[..]), Some(&1));
+        assert_eq!(node.get(&b[..]), Some(&2));
+        // removing one leaves the other intact
+        assert_eq!(node.remove(&a[..]), Some(1));
+        assert_eq!(node.get(&a[..]), None);
+        assert_eq!(node.get(&b[..]), Some(&2));
+    }
+
+    // Two long labels that share a long common prefix (>255 bytes) before diverging.
+    #[test]
+    fn test_long_shared_prefix_long_suffixes() {
+        let mut node = Node::root();
+        // shared: 'x' * 260, then diverge
+        let mut a = [b'x'; 260].to_vec();
+        a.extend(b"aaa");
+        let mut b = [b'x'; 260].to_vec();
+        b.extend(b"bbb");
+
+        node.insert(&a[..], 1);
+        node.insert(&b[..], 2);
+        assert_eq!(node.get(&a[..]), Some(&1));
+        assert_eq!(node.get(&b[..]), Some(&2));
+        assert_eq!(node.remove(&a[..]), Some(1));
+        assert_eq!(node.get(&a[..]), None);
+        assert_eq!(node.get(&b[..]), Some(&2));
+    }
+
+    // Replace the value of an existing long-label key.
+    #[test]
+    fn test_overwrite_long_label() {
+        let mut node = Node::root();
+        let label = [b'z'; 510];
+        node.insert(&label[..], 1);
+        assert_eq!(node.insert(&label[..], 2), Some(1));
+        assert_eq!(node.get(&label[..]), Some(&2));
+        dbg!(&node);
+    }
+
+    // Insert a short key that is a prefix of a long key, and vice versa.
+    #[test]
+    fn test_short_prefix_of_long_label() {
+        let mut node = Node::root();
+        let short = [b'p'; 10];
+        let mut long = [b'p'; 10].to_vec();
+        long.extend(b"q".repeat(300));
+
+        node.insert(&short[..], 1);
+        node.insert(&long[..], 2);
+        assert_eq!(node.get(&short[..]), Some(&1));
+        assert_eq!(node.get(&long[..]), Some(&2));
+
+        // inserting another long sibling under the same short prefix
+        let mut long2 = [b'p'; 10].to_vec();
+        long2.extend(b"r".repeat(300));
+        node.insert(&long2[..], 3);
+        assert_eq!(node.get(&long2[..]), Some(&3));
+        assert_eq!(node.get(&short[..]), Some(&1));
+        assert_eq!(node.get(&long[..]), Some(&2));
+        dbg!(&node);
+    }
+
+    // Three-chunk chain: label length > 2 * MAX_LABEL_LEN (>510 bytes).
+    #[test]
+    fn test_triple_chunk_long_label() {
+        let mut node = Node::root();
+        let label = [b'k'; 700];
+        node.insert(&label[..], 42);
+        assert_eq!(node.get(&label[..]), Some(&42));
+        assert_eq!(node.remove(&label[..]), Some(42));
+        assert_eq!(node.get(&label[..]), None);
+        dbg!(&node);
+    }
+
+    // entry() API with a long-label key that needs chaining.
+    #[test]
+    fn test_entry_long_label() {
+        let mut node = Node::root();
+        let label = [b'm'; 600];
+        node.entry(&label[..]).or_insert(99);
+        assert_eq!(node.get(&label[..]), Some(&99));
+
+        // calling entry again on the same key returns Occupied
+        *node.entry(&label[..]).or_insert(0) = 100;
+        assert_eq!(node.get(&label[..]), Some(&100));
+        dbg!(&node);
+    }
+
+    // entry() with a partial-prefix-match long suffix.
+    #[test]
+    fn test_entry_partial_prefix_long_suffix() {
+        let mut node = Node::root();
+        let short = [b'e'; 5];
+        node.insert(&short[..], 1);
+
+        let mut long = [b'e'; 5].to_vec();
+        long.extend(b"f".repeat(300));
+        node.entry(&long[..]).or_insert(2);
+        assert_eq!(node.get(&short[..]), Some(&1));
+        assert_eq!(node.get(&long[..]), Some(&2));
     }
 
     #[test]
