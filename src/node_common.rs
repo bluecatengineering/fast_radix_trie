@@ -605,18 +605,27 @@ impl<V> Node<V> {
                 // suffix as a new child. Then point cur at that child and key at the full
                 // suffix and continue the loop
                 let (_, new_suffix) = unsafe { key.split_at_unchecked(n) };
-                let first_chunk = &new_suffix[..new_suffix.len().min(MAX_LABEL_LEN)];
-                let new_child = Node::new(first_chunk, [], None);
-                // Safety:
-                // - `split_at(n, Some(new_child))` is safe because n <= cur.label_len() (from lcp_by4)
-                let idx = unsafe { cur.split_at(n, Some(new_child)) };
-                // Safety:
-                // - `idx` is a valid index returned by `split_at`
-                // - `get_unchecked_mut(idx)` is safe because idx < children_len()
-
-                cur = unsafe { cur.children_mut().get_unchecked_mut(idx) };
-                key = new_suffix;
-                continue;
+                if new_suffix.len() > MAX_LABEL_LEN {
+                    let new_child: Node<V> = Node::new(&new_suffix[..MAX_LABEL_LEN], [], None);
+                    // Safety:
+                    // - `split_at(n, Some(new_child))` is safe because n <= cur.label_len() (from lcp_by4)
+                    unsafe {
+                        let idx = cur.split_at(n, Some(new_child));
+                        cur = cur.children_mut().get_unchecked_mut(idx);
+                    }
+                    // advance key to new suffix
+                    key = new_suffix;
+                    continue;
+                } else {
+                    let new_child: Node<V> = Node::new(new_suffix, [], None);
+                    // Safety:
+                    //   - `split_at(n, Some(new_child))` is safe because n <= cur.label_len()
+                    //     (from lcp_by4).
+                    let idx = unsafe { cur.split_at(n, Some(new_child)) };
+                    return Entry::Vacant(VacantEntry {
+                        node: unsafe { cur.children_mut().get_unchecked_mut(idx) },
+                    });
+                }
             } else {
                 // new child needed but next element doesn't exist
                 match key.len().cmp(&cur.label_len()) {
@@ -708,13 +717,25 @@ impl<V> Node<V> {
                 // - `split_at_unchecked(n)` is safe because `n` is the length of the longest common prefix
                 // - `n < key.len()` is guaranteed because next.is_some() means there's a mismatch
                 let (_, new_suffix) = unsafe { key.split_at_unchecked(n) };
-                let new_child = Self::new_chained(new_suffix, value);
-                // Safety:
-                // - `split_at(n, Some(new_child))` is safe because n <= cur.label_len() (from lcp_by4)
-                unsafe {
-                    cur.split_at(n, Some(new_child));
+                if new_suffix.len() > MAX_LABEL_LEN {
+                    let new_child: Node<V> = Node::new(&new_suffix[..MAX_LABEL_LEN], [], None);
+                    // Safety:
+                    // - `split_at(n, Some(new_child))` is safe because n <= cur.label_len() (from lcp_by4)
+                    unsafe {
+                        let idx = cur.split_at(n, Some(new_child));
+                        cur = cur.children_mut().get_unchecked_mut(idx);
+                    }
+                    // advance key to new suffix
+                    key = new_suffix;
+                    continue;
+                } else {
+                    let new_child: Node<V> = Node::new(new_suffix, [], Some(value));
+                    // Safety:
+                    //   - `split_at(n, Some(new_child))` is safe because n <= cur.label_len()
+                    //     (from lcp_by4).
+                    unsafe { cur.split_at(n, Some(new_child)) };
+                    return None;
                 }
-                return None;
             } else {
                 // new child needed but next element doesn't exist
                 match key.len().cmp(&cur.label_len()) {

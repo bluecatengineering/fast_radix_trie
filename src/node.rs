@@ -87,17 +87,6 @@ impl<V> Node<V> {
             ptr.assume_init()
         }
     }
-    /// Builds a chain of nodes for a label that exceeds MAX_LABEL_LEN.
-    /// The first node in the chain carries no value; the last node carries `value`.
-    pub(crate) fn new_chained(key: &[u8], value: V) -> Node<V> {
-        use crate::node_common::MAX_LABEL_LEN;
-        if key.len() <= MAX_LABEL_LEN {
-            Node::new(key, [], Some(value))
-        } else {
-            let child = Self::new_chained(&key[MAX_LABEL_LEN..], value);
-            Node::new(&key[..MAX_LABEL_LEN], [child], None)
-        }
-    }
 
     /// Returns the reference to the value of this node.
     pub fn value(&self) -> Option<&V> {
