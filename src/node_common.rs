@@ -557,11 +557,12 @@ impl<V> Node<V> {
         if self.value().is_some() || self.children_len() != 1 {
             return;
         }
-        // Do not merge if the combined label would exceed the per-node maximum.
-        // Chain nodes (label > MAX_LABEL_LEN split across multiple nodes) must
-        // stay split; merging them would silently truncate the label via `as u8`.
-        let child_label_len = self.children()[0].label_len();
-        if self.label_len() + child_label_len > MAX_LABEL_LEN {
+        // Do not merge if the combined label would exceed MAX_LABEL_LEN
+        //
+        // SAFETY: we know children_len == 1 so we can skip bounds check
+        if (self.label_len() + unsafe { self.children().get_unchecked(0) }.label_len())
+            > MAX_LABEL_LEN
+        {
             return;
         }
         let old_parent = crate::NodePtrAndData {
