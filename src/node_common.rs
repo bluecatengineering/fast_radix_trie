@@ -206,14 +206,14 @@ impl<V> Node<V> {
     /// Gets an iterator which traverses nodes matching a wildcard pattern.
     ///
     /// The pattern supports:
-    /// - `*` matches one or more characters
+    /// - `*` matches zero or more characters
     /// - `?` matches exactly one character
     /// - Any other byte matches literally
     ///
     /// # Examples
     ///
     /// ```
-    /// use patricia_tree::RadixSet;
+    /// use fast_radix_trie::RadixSet;
     ///
     /// let mut set = RadixSet::new();
     /// set.insert("foo.bar.com");
@@ -1195,6 +1195,7 @@ impl WildcardFilter {
                     }
                 }
             }
+            escaped = false;
         }
         patterns
     }
@@ -2741,7 +2742,7 @@ mod tests {
         set.insert("test");
         set.insert("foobar");
 
-        // matches one or more characters
+        // matches zero or more characters
         let matches: Vec<_> = set
             .wildcard_iter(b"foo.*.com")
             .map(|k| String::from_utf8(k).unwrap())
@@ -2820,5 +2821,50 @@ mod tests {
             .map(|k| String::from_utf8(k).unwrap())
             .collect();
         assert_eq!(matches, vec!["foobar"]);
+    }
+
+    #[test]
+    fn wildcard_parse_escaped() {
+        assert_eq!(WildcardFilter::parse(b"\\*"), vec![Pattern::Literal(b"*")]);
+
+        assert_eq!(WildcardFilter::parse(b"\\?"), vec![Pattern::Literal(b"?")]);
+
+        // escaped wildcard followed by literal chars
+        assert_eq!(
+            WildcardFilter::parse(b"\\*foo"),
+            vec![Pattern::Literal(b"*foo")]
+        );
+
+        // mix: literal prefix, escaped *, literal suffix
+        assert_eq!(
+            WildcardFilter::parse(b"foo.\\*.com"),
+            vec![Pattern::Literal(b"foo."), Pattern::Literal(b"*.com")]
+        );
+    }
+
+    #[test]
+    fn wildcard_iter_escaped() {
+        let mut set = RadixSet::new();
+        set.insert("foo.*.com");
+        set.insert("foo.bar.com");
+        set.insert("foo.?.com");
+
+        let matches: Vec<_> = set
+            .wildcard_iter(b"foo.\\*.com")
+            .map(|k| String::from_utf8(k).unwrap())
+            .collect();
+        assert_eq!(matches, vec!["foo.*.com"]);
+
+        let matches: Vec<_> = set
+            .wildcard_iter(b"foo.*.com")
+            .map(|k| String::from_utf8(k).unwrap())
+            .collect();
+        assert_eq!(matches.len(), 3);
+
+        let matches: Vec<_> = set
+            .wildcard_iter(b"foo.\\?.com")
+            .map(|k| String::from_utf8(k).unwrap())
+            .collect();
+        assert_eq!(matches, vec!["foo.?.com"]);
     }
 }

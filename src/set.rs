@@ -251,7 +251,7 @@ impl<T: Bytes> GenericRadixSet<T> {
     /// Gets an iterator over entries matching a wildcard pattern.
     ///
     /// The pattern supports:
-    /// - `*` matches one or more characters
+    /// - `*` matches zero or more characters
     /// - `?` matches exactly one character
     /// - Any other byte matches literally
     ///
