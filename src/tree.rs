@@ -167,6 +167,11 @@ impl<V> RadixTrie<V> {
             label_lens: Vec::new(),
         }
     }
+    pub fn wildcard_nodes<'a, 'b>(&'a self, pattern: &'b [u8]) -> WildcardNodes<'a, 'b, V> {
+        WildcardNodes {
+            nodes: self.root.wildcard_iter(pattern),
+        }
+    }
     pub fn into_nodes(self) -> IntoNodes<V> {
         IntoNodes {
             nodes: self.root.into_iter(),
@@ -204,6 +209,18 @@ impl<'a, V: 'a> Iterator for Nodes<'a, V> {
         } else {
             None
         }
+    }
+}
+
+#[derive(Debug)]
+pub struct WildcardNodes<'a, 'b, V: 'a> {
+    nodes: node_common::WildcardIter<'a, 'b, V>,
+}
+
+impl<'a, 'b, V: 'a> Iterator for WildcardNodes<'a, 'b, V> {
+    type Item = node_common::WildcardMatch<'a, V>;
+    fn next(&mut self) -> Option<Self::Item> {
+        self.nodes.next()
     }
 }
 

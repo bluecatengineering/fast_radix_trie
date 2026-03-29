@@ -203,6 +203,38 @@ impl<V> Node<V> {
         }
     }
 
+    /// Gets an iterator which traverses nodes matching a wildcard pattern.
+    ///
+    /// The pattern supports:
+    /// - `*` matches zero or more characters
+    /// - `?` matches exactly one character
+    /// - Any other byte matches literally
+    ///
+    /// Patterns `?` and `*` can be escaped with `\\` like so: `foo\\*b?r` to search the literal "foo*b" and `?r`
+    /// # Examples
+    ///
+    /// ```
+    /// use fast_radix_trie::RadixSet;
+    ///
+    /// let mut set = RadixSet::new();
+    /// set.insert("foo.bar.com");
+    /// set.insert("foo.baz.com");
+    /// set.insert("hello.world");
+    ///
+    /// let matches: Vec<_> = set.wildcard_iter(b"foo.*.com").collect();
+    /// assert_eq!(matches.len(), 2);
+    /// ```
+    pub fn wildcard_iter<'a, 'b>(&'a self, pattern: &'b [u8]) -> WildcardIter<'a, 'b, V> {
+        WildcardIter {
+            patterns: WildcardFilter::parse(pattern),
+            stack: vec![WildcardState {
+                depth: 0,
+                node: self,
+                key: Vec::new(),
+            }],
+        }
+    }
+
     pub(crate) fn child_with_first(&self, byte: u8) -> Option<&Self> {
         let i = self.child_index_with_first(byte)?;
         // Safety:
@@ -1086,6 +1118,226 @@ where
             // we could val.is_some() if we dont want to return nodes with no value (that have been split)
             if common_prefix_len == node.label_len() {
                 return Some((prefix_len, node));
+            }
+        }
+        None
+    }
+}
+
+/// State for wildcard pattern matching traversal
+#[derive(Debug, Clone)]
+struct WildcardState<'a, V> {
+    depth: usize,
+    node: &'a Node<V>,
+    key: Vec<u8>,
+}
+
+/// A parsed wildcard pattern segment
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum Pattern<'a> {
+    /// `*` matches zero or more chars
+    Any,
+    /// `?` matches exactly one char
+    One,
+    /// Literal bytes to match exactly
+    Literal(&'a [u8]),
+}
+
+const ANY: u8 = b'*';
+const ONE: u8 = b'?';
+const ESCAPE: u8 = b'\\';
+
+/// Parser for wildcard patterns
+struct WildcardFilter;
+
+impl WildcardFilter {
+    /// Parse a pattern potentially with wildcards
+    fn parse(pattern: &[u8]) -> Vec<Pattern<'_>> {
+        let mut patterns = Vec::new();
+        let mut escaped = false;
+
+        let mut iter = pattern.iter().copied().enumerate().peekable();
+        while let Some((i, cur)) = iter.next() {
+            let next = iter.peek().map(|(_, c)| *c);
+            // (current char, next char, started escape)
+            match (cur, next, escaped) {
+                (ESCAPE, _, false) => {
+                    escaped = true;
+                    continue;
+                }
+                (ANY, Some(ANY), false) => {} // ** means *, skip to next
+                (ANY, Some(ONE), false) => {
+                    // consume *? -> ?*, *?? -> ??* -> *?*? -> ??*
+                    while let Some((_, c)) = iter.peek().copied() {
+                        match c {
+                            ONE => patterns.push(Pattern::One),
+                            ANY => {}
+                            _ => break,
+                        }
+                        iter.next();
+                    }
+                    patterns.push(Pattern::Any);
+                }
+                (ANY, _, false) => {
+                    patterns.push(Pattern::Any);
+                }
+                (ONE, _, false) => patterns.push(Pattern::One),
+                (_, _, true) => {
+                    // escaped chars start new literal
+                    patterns.push(Pattern::Literal(&pattern[i..=i]));
+                }
+                _ => {
+                    // literal
+                    if let Some(Pattern::Literal(slice)) = patterns.last_mut() {
+                        let start = i - slice.len();
+                        *slice = &pattern[start..=(start + slice.len())];
+                    } else {
+                        patterns.push(Pattern::Literal(&pattern[i..=i]));
+                    }
+                }
+            }
+            escaped = false;
+        }
+        patterns
+    }
+}
+
+/// An iterator over nodes matching a wildcard pattern
+///
+/// supports:
+/// - `*` matches zero or more characters
+/// - `?` matches exactly one character
+/// - literal slices
+#[derive(Debug)]
+pub struct WildcardIter<'a, 'b, V> {
+    patterns: Vec<Pattern<'b>>,
+    stack: Vec<WildcardState<'a, V>>,
+}
+
+/// Result item from WildcardIter containing the accumulated key and the matching node
+#[derive(Debug)]
+pub struct WildcardMatch<'a, V> {
+    pub(crate) key: Vec<u8>,
+    pub(crate) node: &'a Node<V>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum WalkResult {
+    /// Exact pattern match. Don't explore further.
+    Match,
+    /// Key matches so far AND children could also produce matches (e.g. trailing `*`).
+    MatchAndPartial,
+    /// Key is valid prefix of a match, explore children but don't yield this node.
+    PartialMatch,
+    /// Key cannot match, stop searching.
+    NoMatch,
+}
+
+impl WalkResult {
+    fn is_match(self) -> bool {
+        matches!(self, WalkResult::Match | WalkResult::MatchAndPartial)
+    }
+
+    fn explore_children(self) -> bool {
+        matches!(self, WalkResult::PartialMatch | WalkResult::MatchAndPartial)
+    }
+}
+
+impl<'a, 'b, V> WildcardIter<'a, 'b, V> {
+    fn check_pattern(key: &[u8], patterns: &[Pattern<'_>]) -> WalkResult {
+        Self::check_recursive(key, patterns, 0, 0)
+    }
+
+    fn check_recursive(
+        key: &[u8],
+        patterns: &[Pattern<'_>],
+        key_idx: usize,
+        pat_idx: usize,
+    ) -> WalkResult {
+        // both exhausted
+        // exact match, children have extra bytes pattern can't consume
+        if key_idx == key.len() && pat_idx == patterns.len() {
+            return WalkResult::Match;
+        }
+        // pattern exhausted
+        // no match, prune
+        if pat_idx >= patterns.len() {
+            return WalkResult::NoMatch;
+        }
+        // key exhausted
+        // but more pattern: children could have matches
+        if key_idx == key.len() {
+            return WalkResult::PartialMatch;
+        }
+
+        match &patterns[pat_idx] {
+            Pattern::Literal(lit) => {
+                let remaining = &key[key_idx..];
+                let (n, _) = crate::lcp_by4(remaining, lit);
+                if n == lit.len() {
+                    // full literal match, continue with next pattern
+                    Self::check_recursive(key, patterns, key_idx + n, pat_idx + 1)
+                } else if n == remaining.len() {
+                    // key exhausted mid-literal, children could complete it
+                    WalkResult::PartialMatch
+                } else {
+                    WalkResult::NoMatch
+                }
+            }
+            Pattern::One => {
+                // consume one byte
+                Self::check_recursive(key, patterns, key_idx + 1, pat_idx + 1)
+            }
+            Pattern::Any => {
+                // try to consume, starting with longest first
+                let mut is_match = false;
+                for consume in (0..=(key.len() - key_idx)).rev() {
+                    if Self::check_recursive(key, patterns, key_idx + consume, pat_idx + 1)
+                        .is_match()
+                    {
+                        is_match = true;
+                        break;
+                    }
+                }
+                // Any can always consume child bytes too, so always explore children
+                if is_match {
+                    WalkResult::MatchAndPartial
+                } else {
+                    WalkResult::PartialMatch
+                }
+            }
+        }
+    }
+}
+
+impl<'a, 'b, V> Iterator for WildcardIter<'a, 'b, V> {
+    type Item = WildcardMatch<'a, V>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        while let Some(state) = self.stack.pop() {
+            let WildcardState {
+                depth,
+                node,
+                mut key,
+            } = state;
+
+            // append current node's label to the accumulated key
+            key.extend_from_slice(node.label());
+
+            let result = Self::check_pattern(&key, &self.patterns);
+
+            if result.explore_children() {
+                for child in node.children().iter().rev() {
+                    self.stack.push(WildcardState {
+                        depth: depth + 1,
+                        node: child,
+                        key: key.clone(),
+                    });
+                }
+            }
+
+            if result.is_match() {
+                return Some(WildcardMatch { key, node });
             }
         }
         None
@@ -2297,7 +2549,7 @@ mod tests {
     }
 
     #[test]
-    fn get_longest_common_prefix_works() {
+    fn get_longest_common_prefix() {
         let set = ["123", "123456", "1234_67", "123abc", "123def"]
             .iter()
             .collect::<RadixSet>();
@@ -2313,7 +2565,7 @@ mod tests {
     }
 
     #[test]
-    fn get_longest_common_prefix_mut_works() {
+    fn get_longest_common_prefix_mut() {
         let mut map = [
             ("123", 1),
             ("123456", 2),
@@ -2350,5 +2602,270 @@ mod tests {
             map.get_longest_common_prefix_mut("123456789"),
             Some(("123456", &mut 20))
         );
+    }
+
+    #[test]
+    fn wildcard_parse() {
+        // literal
+        assert_eq!(
+            WildcardFilter::parse(b"foo"),
+            vec![Pattern::Literal(b"foo")]
+        );
+
+        // *
+        assert_eq!(
+            WildcardFilter::parse(b"foo.*.com"),
+            vec![
+                Pattern::Literal(b"foo."),
+                Pattern::Any,
+                Pattern::Literal(b".com")
+            ]
+        );
+
+        // ?
+        assert_eq!(
+            WildcardFilter::parse(b"ba?.txt"),
+            vec![
+                Pattern::Literal(b"ba"),
+                Pattern::One,
+                Pattern::Literal(b".txt")
+            ]
+        );
+
+        // multiple wildcards
+        assert_eq!(
+            WildcardFilter::parse(b"*.*"),
+            vec![Pattern::Any, Pattern::Literal(b"."), Pattern::Any]
+        );
+
+        // multiple consecutive * should collapse to single Any
+        assert_eq!(
+            WildcardFilter::parse(b"foo.**.com"),
+            vec![
+                Pattern::Literal(b"foo."),
+                Pattern::Any,
+                Pattern::Literal(b".com")
+            ]
+        );
+
+        assert_eq!(
+            WildcardFilter::parse(b"foo.****bar"),
+            vec![
+                Pattern::Literal(b"foo."),
+                Pattern::Any,
+                Pattern::Literal(b"bar")
+            ]
+        );
+
+        // mixed wildcards
+        assert_eq!(
+            WildcardFilter::parse(b"f?o.*.???.com"),
+            vec![
+                Pattern::Literal(b"f"),
+                Pattern::One,
+                Pattern::Literal(b"o."),
+                Pattern::Any,
+                Pattern::Literal(b"."),
+                Pattern::One,
+                Pattern::One,
+                Pattern::One,
+                Pattern::Literal(b".com")
+            ]
+        );
+
+        // pattern starting with wildcard
+        assert_eq!(
+            WildcardFilter::parse(b"*.com"),
+            vec![Pattern::Any, Pattern::Literal(b".com")]
+        );
+
+        // pattern ending with wildcard
+        assert_eq!(
+            WildcardFilter::parse(b"foo.*"),
+            vec![Pattern::Literal(b"foo."), Pattern::Any]
+        );
+
+        // only wildcards
+        assert_eq!(
+            // ** -> *
+            // *? -> ?*
+            // ?** -> ?*
+            WildcardFilter::parse(b"**?*"),
+            vec![Pattern::One, Pattern::Any]
+        );
+
+        // *?? changes to ??*
+        assert_eq!(
+            WildcardFilter::parse(b"foo.*??.com"),
+            vec![
+                Pattern::Literal(b"foo."),
+                Pattern::One,
+                Pattern::One,
+                Pattern::Any,
+                Pattern::Literal(b".com")
+            ]
+        );
+
+        // *??? changes to ???*
+        assert_eq!(
+            WildcardFilter::parse(b"foo.*???.com"),
+            vec![
+                Pattern::Literal(b"foo."),
+                Pattern::One,
+                Pattern::One,
+                Pattern::One,
+                Pattern::Any,
+                Pattern::Literal(b".com")
+            ]
+        );
+
+        // *?*? changes to ??*
+        assert_eq!(
+            WildcardFilter::parse(b"foo.*?*?.com"),
+            vec![
+                Pattern::Literal(b"foo."),
+                Pattern::One,
+                Pattern::One,
+                Pattern::Any,
+                Pattern::Literal(b".com")
+            ]
+        );
+    }
+
+    #[test]
+    fn wildcard_iter_works() {
+        let mut set = RadixSet::new();
+        set.insert("foo.bar.com");
+        set.insert("foo.baz.com");
+        set.insert("foo.qux.com");
+        set.insert("hello.world");
+        set.insert("hello.rust");
+        set.insert("test");
+        set.insert("foobar");
+
+        // matches zero or more characters
+        let matches: Vec<_> = set
+            .wildcard_iter(b"foo.*.com")
+            .map(|k| String::from_utf8(k).unwrap())
+            .collect();
+        assert_eq!(matches.len(), 3);
+        assert!(matches.contains(&"foo.bar.com".to_string()));
+        assert!(matches.contains(&"foo.baz.com".to_string()));
+        assert!(matches.contains(&"foo.qux.com".to_string()));
+
+        // matches zero chars
+        let matches: Vec<_> = set
+            .wildcard_iter(b"foo.bar*.com")
+            .map(|k| String::from_utf8(k).unwrap())
+            .collect();
+        assert_eq!(matches.len(), 1);
+        assert!(matches.contains(&"foo.bar.com".to_string()));
+
+        // matches single character
+        let matches: Vec<_> = set
+            .wildcard_iter(b"foo.ba?.com")
+            .map(|k| String::from_utf8(k).unwrap())
+            .collect();
+        assert_eq!(matches.len(), 2);
+        assert!(matches.contains(&"foo.bar.com".to_string()));
+        assert!(matches.contains(&"foo.baz.com".to_string()));
+
+        // ending *
+        let matches: Vec<_> = set
+            .wildcard_iter(b"foo.*")
+            .map(|k| String::from_utf8(k).unwrap())
+            .collect();
+        assert_eq!(matches.len(), 3);
+        assert!(matches.contains(&"foo.bar.com".to_string()));
+        assert!(matches.contains(&"foo.baz.com".to_string()));
+        assert!(matches.contains(&"foo.qux.com".to_string()));
+
+        let matches: Vec<_> = set
+            .wildcard_iter(b"hello.*")
+            .map(|k| String::from_utf8(k).unwrap())
+            .collect();
+        assert_eq!(matches.len(), 2);
+        assert!(matches.contains(&"hello.world".to_string()));
+        assert!(matches.contains(&"hello.rust".to_string()));
+
+        // exact match
+        let matches: Vec<_> = set
+            .wildcard_iter(b"test")
+            .map(|k| String::from_utf8(k).unwrap())
+            .collect();
+        assert_eq!(matches, vec!["test"]);
+
+        // no matches
+        let matches: Vec<_> = set
+            .wildcard_iter(b"nonexistent.*")
+            .map(|k| String::from_utf8(k).unwrap())
+            .collect();
+        assert_eq!(matches.len(), 0);
+
+        // * at beginning
+        let matches: Vec<_> = set
+            .wildcard_iter(b"*.com")
+            .map(|k| String::from_utf8(k).unwrap())
+            .collect();
+        assert_eq!(matches.len(), 3);
+
+        // multiple *
+        let matches: Vec<_> = set
+            .wildcard_iter(b"*.*")
+            .map(|k| String::from_utf8(k).unwrap())
+            .collect();
+        assert_eq!(matches.len(), 5);
+
+        // ? with multiple positions
+        let matches: Vec<_> = set
+            .wildcard_iter(b"foo???")
+            .map(|k| String::from_utf8(k).unwrap())
+            .collect();
+        assert_eq!(matches, vec!["foobar"]);
+    }
+
+    #[test]
+    fn wildcard_parse_escaped() {
+        assert_eq!(WildcardFilter::parse(b"\\*"), vec![Pattern::Literal(b"*")]);
+
+        assert_eq!(WildcardFilter::parse(b"\\?"), vec![Pattern::Literal(b"?")]);
+
+        // escaped wildcard followed by literal chars
+        assert_eq!(
+            WildcardFilter::parse(b"\\*foo"),
+            vec![Pattern::Literal(b"*foo")]
+        );
+
+        // mix: literal prefix, escaped *, literal suffix
+        assert_eq!(
+            WildcardFilter::parse(b"foo.\\*.com"),
+            vec![Pattern::Literal(b"foo."), Pattern::Literal(b"*.com")]
+        );
+    }
+
+    #[test]
+    fn wildcard_iter_escaped() {
+        let mut set = RadixSet::new();
+        set.insert("foo.*.com");
+        set.insert("foo.bar.com");
+        set.insert("foo.?.com");
+
+        let matches: Vec<_> = set
+            .wildcard_iter(b"foo.\\*.com")
+            .map(|k| String::from_utf8(k).unwrap())
+            .collect();
+        assert_eq!(matches, vec!["foo.*.com"]);
+
+        let matches: Vec<_> = set
+            .wildcard_iter(b"foo.*.com")
+            .map(|k| String::from_utf8(k).unwrap())
+            .collect();
+        assert_eq!(matches.len(), 3);
+
+        let matches: Vec<_> = set
+            .wildcard_iter(b"foo.\\?.com")
+            .map(|k| String::from_utf8(k).unwrap())
+            .collect();
+        assert_eq!(matches, vec!["foo.?.com"]);
     }
 }

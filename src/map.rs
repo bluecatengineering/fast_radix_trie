@@ -445,6 +445,33 @@ impl<K: Bytes, V> GenericRadixMap<K, V> {
         Iter::new(self.tree.nodes(), Vec::new())
     }
 
+    /// Gets an iterator over entries matching a wildcard pattern.
+    ///
+    /// The pattern supports:
+    /// - `*` matches zero or more characters
+    /// - `?` matches exactly one character
+    /// - Any other byte matches literally
+    ///
+    /// Patterns `?` and `*` can be escaped with `\\` like so: `foo\\*b?r` to search the literal "foo*b" and `?r`
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use fast_radix_trie::RadixMap;
+    ///
+    /// let mut map = RadixMap::new();
+    /// map.insert("foo.bar.com", 1);
+    /// map.insert("foo.baz.com", 2);
+    /// map.insert("hello.world", 3);
+    ///
+    /// let matches: Vec<_> = map.wildcard_iter(b"foo.*.com").collect();
+    /// assert_eq!(matches.len(), 2);
+    ///
+    /// ```
+    pub fn wildcard_iter<'a, 'b>(&'a self, pattern: &'b [u8]) -> WildcardIter<'a, 'b, K, V> {
+        WildcardIter::new(self.tree.wildcard_nodes(pattern), Vec::new())
+    }
+
     /// Gets a mutable iterator over the entries of this map, soretd by key.
     ///
     /// # Examples
@@ -649,6 +676,32 @@ impl<'a, K: Bytes, V: 'a> Iterator for Iter<'a, K, V> {
             self.key_bytes.extend(node.label());
             if let Some(value) = node.value() {
                 return Some((K::Borrowed::from_bytes(&self.key_bytes).to_owned(), value));
+            }
+        }
+        None
+    }
+}
+
+/// An iterator over a `RadixMap`'s entries matching a wildcard pattern.
+#[derive(Debug)]
+pub struct WildcardIter<'a, 'b, K, V: 'a> {
+    nodes: tree::WildcardNodes<'a, 'b, V>,
+    _key: PhantomData<K>,
+}
+impl<'a, 'b, K, V: 'a> WildcardIter<'a, 'b, K, V> {
+    fn new(nodes: tree::WildcardNodes<'a, 'b, V>, _key: Vec<u8>) -> Self {
+        Self {
+            nodes,
+            _key: PhantomData,
+        }
+    }
+}
+impl<'a, 'b, K: Bytes, V: 'a> Iterator for WildcardIter<'a, 'b, K, V> {
+    type Item = (K, &'a V);
+    fn next(&mut self) -> Option<Self::Item> {
+        for node in &mut self.nodes {
+            if let Some(value) = node.node.value() {
+                return Some((K::Borrowed::from_bytes(&node.key).to_owned(), value));
             }
         }
         None
