@@ -452,6 +452,8 @@ impl<K: Bytes, V> GenericRadixMap<K, V> {
     /// - `?` matches exactly one character
     /// - Any other byte matches literally
     ///
+    /// Patterns `?` and `*` can be escaped with `\\` like so: `foo\\*b?r` to search the literal "foo*b" and `?r`
+    ///
     /// # Examples
     ///
     /// ```
@@ -464,6 +466,7 @@ impl<K: Bytes, V> GenericRadixMap<K, V> {
     ///
     /// let matches: Vec<_> = map.wildcard_iter(b"foo.*.com").collect();
     /// assert_eq!(matches.len(), 2);
+    ///
     /// ```
     pub fn wildcard_iter<'a, 'b>(&'a self, pattern: &'b [u8]) -> WildcardIter<'a, 'b, K, V> {
         WildcardIter::new(self.tree.wildcard_nodes(pattern), Vec::new())

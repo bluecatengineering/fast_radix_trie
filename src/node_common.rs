@@ -210,6 +210,7 @@ impl<V> Node<V> {
     /// - `?` matches exactly one character
     /// - Any other byte matches literally
     ///
+    /// Patterns `?` and `*` can be escaped with `\\` like so: `foo\\*b?r` to search the literal "foo*b" and `?r`
     /// # Examples
     ///
     /// ```
