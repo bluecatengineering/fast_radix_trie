@@ -562,7 +562,7 @@ impl<K: Bytes, V> GenericRadixMap<K, V> {
     /// assert_eq!(vec![(Vec::from("bar"), &2), ("baz".into(), &3)],
     ///            map.iter_prefix(b"ba").collect::<Vec<_>>());
     /// ```
-    pub fn iter_prefix<'a, Q>(&'a self, prefix: &Q) -> impl 'a + Iterator<Item = (K, &'a V)>
+    pub fn iter_prefix<'a, Q>(&'a self, prefix: &Q) -> impl Iterator<Item = (K, &'a V)>
     where
         Q: ?Sized + AsRef<K::Borrowed>,
     {
@@ -586,10 +586,7 @@ impl<K: Bytes, V> GenericRadixMap<K, V> {
     /// assert_eq!(vec![(Vec::from("bar"), &mut 2), ("baz".into(), &mut 3)],
     ///            map.iter_prefix_mut(b"ba").collect::<Vec<_>>());
     /// ```
-    pub fn iter_prefix_mut<'a, Q>(
-        &'a mut self,
-        prefix: &Q,
-    ) -> impl 'a + Iterator<Item = (K, &'a mut V)>
+    pub fn iter_prefix_mut<'a, Q>(&'a mut self, prefix: &Q) -> impl Iterator<Item = (K, &'a mut V)>
     where
         Q: ?Sized + AsRef<K::Borrowed>,
     {
