@@ -167,7 +167,10 @@ impl<V> RadixTrie<V> {
             label_lens: Vec::new(),
         }
     }
-    pub fn wildcard_nodes<'a, 'b>(&'a self, pattern: &'b [u8]) -> WildcardNodes<'a, 'b, V> {
+    pub fn wildcard_nodes<'a, 'b, K: ?Sized + BorrowedBytes>(
+        &'a self,
+        pattern: &'b K,
+    ) -> WildcardNodes<'a, 'b, V> {
         WildcardNodes {
             nodes: self.root.wildcard_iter(pattern),
         }

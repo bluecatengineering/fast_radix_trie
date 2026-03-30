@@ -224,9 +224,12 @@ impl<V> Node<V> {
     /// let matches: Vec<_> = set.wildcard_iter(b"foo.*.com").collect();
     /// assert_eq!(matches.len(), 2);
     /// ```
-    pub fn wildcard_iter<'a, 'b>(&'a self, pattern: &'b [u8]) -> WildcardIter<'a, 'b, V> {
+    pub fn wildcard_iter<'a, 'b, K: ?Sized + BorrowedBytes>(
+        &'a self,
+        pattern: &'b K,
+    ) -> WildcardIter<'a, 'b, V> {
         WildcardIter {
-            patterns: WildcardFilter::parse(pattern),
+            patterns: WildcardFilter::parse(pattern.as_bytes()),
             stack: vec![WildcardState {
                 depth: 0,
                 node: self,
@@ -2867,5 +2870,79 @@ mod tests {
             .map(|k| String::from_utf8(k).unwrap())
             .collect();
         assert_eq!(matches, vec!["foo.?.com"]);
+    }
+
+    #[test]
+    fn wildcard_iter_calling_conventions() {
+        use crate::StringRadixSet;
+
+        let mut byte_set = RadixSet::new();
+        byte_set.insert("foo.bar.com");
+        byte_set.insert("foo.baz.com");
+        byte_set.insert("hello.world");
+
+        // byte literal, coerces with AsRef
+        let matches: Vec<_> = byte_set.wildcard_iter(b"foo.*.com").collect();
+        assert_eq!(matches.len(), 2);
+
+        // &[u8] slice reference
+        let pattern: &[u8] = b"foo.*.com";
+        let matches: Vec<_> = byte_set.wildcard_iter(pattern).collect();
+        assert_eq!(matches.len(), 2);
+
+        // str impls AsRef<[u8]>
+        let matches: Vec<_> = byte_set.wildcard_iter("foo.*.com").collect();
+        assert_eq!(matches.len(), 2);
+
+        // &String, impls AsRef<[u8]>
+        let owned = String::from("foo.*.com");
+        let matches: Vec<_> = byte_set.wildcard_iter(&owned).collect();
+        assert_eq!(matches.len(), 2);
+
+        // &Vec<u8> impls AsRef<[u8]>
+        let owned_bytes = b"foo.*.com".to_vec();
+        let matches: Vec<_> = byte_set.wildcard_iter(&owned_bytes).collect();
+        assert_eq!(matches.len(), 2);
+
+        // StringRadixSet
+        let mut str_set = StringRadixSet::new();
+        str_set.insert("foo.bar.com");
+        str_set.insert("foo.baz.com");
+        str_set.insert("hello.world");
+
+        // str implements AsRef<str>
+        let matches: Vec<_> = str_set.wildcard_iter("foo.*.com").collect();
+        assert_eq!(matches.len(), 2);
+
+        // &String — String implements AsRef<str>
+        let owned_str = String::from("foo.*.com");
+        let matches: Vec<_> = str_set.wildcard_iter(&owned_str).collect();
+        assert_eq!(matches.len(), 2);
+
+        // RadixMap calling conventions
+        let mut map = RadixMap::new();
+        map.insert("foo.bar.com", 1u32);
+        map.insert("foo.baz.com", 2u32);
+        map.insert("hello.world", 3u32);
+
+        let matches: Vec<_> = map.wildcard_iter(b"foo.*.com").collect();
+        assert_eq!(matches.len(), 2);
+
+        let matches: Vec<_> = map.wildcard_iter("foo.*.com").collect();
+        assert_eq!(matches.len(), 2);
+
+        // StringRadixMap calling conventions
+        let mut str_map = StringRadixMap::new();
+        str_map.insert("foo.bar.com", 1u32);
+        str_map.insert("foo.baz.com", 2u32);
+        str_map.insert("hello.world", 3u32);
+
+        // str
+        let matches: Vec<_> = str_map.wildcard_iter("foo.*.com").collect();
+        assert_eq!(matches.len(), 2);
+
+        // &String
+        let matches: Vec<_> = str_map.wildcard_iter(&owned_str).collect();
+        assert_eq!(matches.len(), 2);
     }
 }
