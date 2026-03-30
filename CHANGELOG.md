@@ -7,35 +7,39 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## Added
+### Added
 
-- wildcard_iter that supports \* (any) and ? (one) wildcards in search pattern
+- `wildcard_iter` that supports \* (any) and ? (one) wildcards in search pattern
+
+### Changed
+
+- `iter_prefix` and `iter_prefix_mut` is more permissive in the generic key types it accepts
 
 ## [1.1.1]
 
-## Fixed
+### Fixed
 
 - fixed >255 len nodes where there is a partial match
 
-## Added
+### Added
 
 - `lcp_by4`/`lcp_by8`
 
-## Changed
+### Changed
 
 - `fmt::Debug` output look
 
 ## [1.1.0]
 
-## Added
+### Added
 
 - trait impl BorrowedBytes for static sized arrays
 - `entry` API for tree/map
 
-## Changed
+### Changed
 
 - allow for key lens greater than 255
 
-## Removed
+### Removed
 
 - unused trait methods in BorrowedBytes
