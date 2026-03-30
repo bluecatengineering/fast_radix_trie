@@ -292,9 +292,9 @@ impl<T: Bytes> GenericRadixSet<T> {
     ///
     /// assert_eq!(set.iter_prefix(b"ba").collect::<Vec<_>>(), [Vec::from("bar"), "baz".into()]);
     /// ```
-    pub fn iter_prefix<'a, 'b>(&'a self, prefix: &'b T::Borrowed) -> impl 'a + Iterator<Item = T>
+    pub fn iter_prefix<U>(&self, prefix: &U) -> impl Iterator<Item = T>
     where
-        'b: 'a,
+        U: ?Sized + AsRef<T::Borrowed>,
     {
         self.map.iter_prefix(prefix).map(|(k, _)| k)
     }
