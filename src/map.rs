@@ -594,11 +594,9 @@ impl<K: Bytes, V> GenericRadixMap<K, V> {
         Q: ?Sized + AsRef<K::Borrowed>,
     {
         let prefix = prefix.as_ref();
-        let result = self
-            .tree
+        self.tree
             .iter_prefix_mut(prefix)
-            .map(|(prefix_len, nodes)| (Vec::from(&prefix.as_bytes()[..prefix_len]), nodes));
-        result
+            .map(|(prefix_len, nodes)| (Vec::from(&prefix.as_bytes()[..prefix_len]), nodes))
             .into_iter()
             .flat_map(|(prefix_bytes, nodes)| IterMut::<K, V>::new(nodes, prefix_bytes))
     }
