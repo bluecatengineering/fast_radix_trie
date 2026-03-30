@@ -270,12 +270,14 @@ impl<T: Bytes> GenericRadixSet<T> {
     /// let matches: Vec<_> = set.wildcard_iter(b"foo.*.com").collect();
     /// assert_eq!(matches.len(), 2);
     /// ```
-    pub fn wildcard_iter<'a, 'b>(&'a self, pattern: &'b [u8]) -> WildcardIter<'a, 'b, T> {
+    pub fn wildcard_iter<'a, 'b, U>(&'a self, pattern: &'b U) -> WildcardIter<'a, 'b, T>
+    where
+        U: ?Sized + AsRef<T::Borrowed>,
+        <T as Bytes>::Borrowed: 'b,
+    {
         WildcardIter(self.map.wildcard_iter(pattern))
     }
-}
 
-impl<T: Bytes> GenericRadixSet<T> {
     /// Gets an iterator over the contents having the given prefix of this set, in sorted order.
     ///
     /// # Examples
