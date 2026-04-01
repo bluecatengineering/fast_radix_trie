@@ -562,13 +562,16 @@ impl<K: Bytes, V> GenericRadixMap<K, V> {
     /// assert_eq!(vec![(Vec::from("bar"), &2), ("baz".into(), &3)],
     ///            map.iter_prefix(b"ba").collect::<Vec<_>>());
     /// ```
-    pub fn iter_prefix<'a>(&'a self, prefix: &K::Borrowed) -> impl Iterator<Item = (K, &'a V)> {
+    pub fn iter_prefix<'a, Q>(&'a self, prefix: &Q) -> impl Iterator<Item = (K, &'a V)>
+    where
+        Q: ?Sized + AsRef<K::Borrowed>,
+    {
+        let prefix = prefix.as_ref();
         self.tree
             .iter_prefix(prefix)
+            .map(|(prefix_len, nodes)| (Vec::from(&prefix.as_bytes()[..prefix_len]), nodes))
             .into_iter()
-            .flat_map(move |(prefix_len, nodes)| {
-                Iter::<K, V>::new(nodes, Vec::from(&prefix.as_bytes()[..prefix_len]))
-            })
+            .flat_map(|(prefix_bytes, nodes)| Iter::<K, V>::new(nodes, prefix_bytes))
     }
 
     /// Gets a mutable iterator over the entries having the given prefix of this map, sorted by key.
@@ -583,16 +586,16 @@ impl<K: Bytes, V> GenericRadixMap<K, V> {
     /// assert_eq!(vec![(Vec::from("bar"), &mut 2), ("baz".into(), &mut 3)],
     ///            map.iter_prefix_mut(b"ba").collect::<Vec<_>>());
     /// ```
-    pub fn iter_prefix_mut<'a>(
-        &'a mut self,
-        prefix: &K::Borrowed,
-    ) -> impl Iterator<Item = (K, &'a mut V)> {
+    pub fn iter_prefix_mut<'a, Q>(&'a mut self, prefix: &Q) -> impl Iterator<Item = (K, &'a mut V)>
+    where
+        Q: ?Sized + AsRef<K::Borrowed>,
+    {
+        let prefix = prefix.as_ref();
         self.tree
             .iter_prefix_mut(prefix)
+            .map(|(prefix_len, nodes)| (Vec::from(&prefix.as_bytes()[..prefix_len]), nodes))
             .into_iter()
-            .flat_map(move |(prefix_len, nodes)| {
-                IterMut::<K, V>::new(nodes, Vec::from(&prefix.as_bytes()[..prefix_len]))
-            })
+            .flat_map(|(prefix_bytes, nodes)| IterMut::<K, V>::new(nodes, prefix_bytes))
     }
 }
 
@@ -1113,72 +1116,72 @@ mod tests {
         assert_eq!(items, vec![])
     }
 
-    // #[test]
-    // fn iter_prefix_keys() {
-    //     let mut map = RadixMap::new();
-    //     map.insert("foobar", 1);
-    //     map.insert("foobaz", 2);
-    //     map.insert("fooqox", 3);
+    #[test]
+    fn iter_prefix_keys() {
+        let mut map = RadixMap::new();
+        map.insert("foobar", 1);
+        map.insert("foobaz", 2);
+        map.insert("fooqox", 3);
 
-    //     let mut items: Vec<_> = map.iter_prefix("foo").collect();
-    //     items.sort_by(|a, b| a.0.cmp(&b.0));
-    //     assert_eq!(
-    //         items,
-    //         vec![
-    //             (b"foobar".to_vec(), &1),
-    //             (b"foobaz".to_vec(), &2),
-    //             (b"fooqox".to_vec(), &3),
-    //         ]
-    //     );
+        let mut items: Vec<_> = map.iter_prefix("foo").collect();
+        items.sort_by(|a, b| a.0.cmp(&b.0));
+        assert_eq!(
+            items,
+            vec![
+                (b"foobar".to_vec(), &1),
+                (b"foobaz".to_vec(), &2),
+                (b"fooqox".to_vec(), &3),
+            ]
+        );
 
-    //     // prefix that consumes part of a shared node label
-    //     let mut items: Vec<_> = map.iter_prefix("foob").collect();
-    //     items.sort_by(|a, b| a.0.cmp(&b.0));
-    //     assert_eq!(
-    //         items,
-    //         vec![(b"foobar".to_vec(), &1), (b"foobaz".to_vec(), &2),]
-    //     );
-    // }
+        // prefix that consumes part of a shared node label
+        let mut items: Vec<_> = map.iter_prefix("foob").collect();
+        items.sort_by(|a, b| a.0.cmp(&b.0));
+        assert_eq!(
+            items,
+            vec![(b"foobar".to_vec(), &1), (b"foobaz".to_vec(), &2),]
+        );
+    }
 
-    // #[test]
-    // fn iter_prefix_lifetime() {
-    //     // 'b (prefix) is shorter than 'a (map). items hold &'a V so they're
-    //     // valid after prefix drops since they borrow from map, not prefix.
-    //     let mut map = RadixMap::new();
-    //     map.insert("foo/bar", 1);
-    //     map.insert("foo/baz", 2);
-    //     map.insert("other", 3);
+    #[test]
+    fn iter_prefix_lifetime() {
+        // 'b (prefix) is shorter than 'a (map). items hold &'a V so they're
+        // valid after prefix drops since they borrow from map, not prefix.
+        let mut map = RadixMap::new();
+        map.insert("foo/bar", 1);
+        map.insert("foo/baz", 2);
+        map.insert("other", 3);
 
-    //     // prefix dropped at end of block, items used outside
-    //     let items: Vec<_> = {
-    //         let prefix = b"foo/".to_vec();
-    //         map.iter_prefix(&prefix).collect()
-    //     };
-    //     assert_eq!(items.len(), 2);
-    //     assert!(items.iter().any(|(k, _)| k == b"foo/bar"));
-    //     assert!(items.iter().any(|(k, _)| k == b"foo/baz"));
-    //     assert_eq!(*items[0].1 + *items[1].1, 3);
+        // prefix dropped at end of block, items used outside
+        let items: Vec<_> = {
+            let prefix = b"foo/".to_vec();
+            map.iter_prefix(&prefix).collect()
+        };
+        assert_eq!(items.len(), 2);
+        assert!(items.iter().any(|(k, _)| k == b"foo/bar"));
+        assert!(items.iter().any(|(k, _)| k == b"foo/baz"));
+        assert_eq!(*items[0].1 + *items[1].1, 3);
 
-    //     // works with String too
-    //     let items: Vec<_> = {
-    //         let prefix = "foo/".to_owned();
-    //         map.iter_prefix(&prefix).collect()
-    //     };
-    //     assert_eq!(items.len(), 2);
+        // works with String too
+        let items: Vec<_> = {
+            let prefix = "foo/".to_owned();
+            map.iter_prefix(&prefix).collect()
+        };
+        assert_eq!(items.len(), 2);
 
-    //     // same for mut, &mut V refs outlive prefix
-    //     let items: Vec<_> = {
-    //         let prefix = b"foo/".to_vec();
-    //         map.iter_prefix_mut(&prefix).collect()
-    //     };
-    //     assert_eq!(items.len(), 2);
-    //     for (_, v) in items {
-    //         *v += 10;
-    //     }
-    //     assert_eq!(map.get("foo/bar"), Some(&11));
-    //     assert_eq!(map.get("foo/baz"), Some(&12));
-    //     assert_eq!(map.get("other"), Some(&3));
-    // }
+        // same for mut, &mut V refs outlive prefix
+        let items: Vec<_> = {
+            let prefix = b"foo/".to_vec();
+            map.iter_prefix_mut(&prefix).collect()
+        };
+        assert_eq!(items.len(), 2);
+        for (_, v) in items {
+            *v += 10;
+        }
+        assert_eq!(map.get("foo/bar"), Some(&11));
+        assert_eq!(map.get("foo/baz"), Some(&12));
+        assert_eq!(map.get("other"), Some(&3));
+    }
 
     #[test]
     fn issue42_common_prefix_values() {
