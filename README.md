@@ -15,6 +15,14 @@ This library is a radix trie implementation (a trie with node compression on com
 
 See [Radix tree](https://en.wikipedia.org/wiki/Radix_tree) for more details.
 
+Features:
+
+- **very** low memory usage
+- _fast_ traversal/insertion/deletion
+- optimized string/byte comparisons
+- `wildcard` iterators
+- `entry` api
+
 ## Implementation
 
 Crate offers two implementations, one optimized for absolute minimum memory usage (minimizing padding/alignment where possible), and one optimized for mutations that uses `realloc`. Use `--no-default-features` to disable the `realloc` feature and use the implementation that's optimized for memory. This crate is no_std compatible.
