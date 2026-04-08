@@ -1,6 +1,6 @@
 [package]
 name = "fast_radix_trie"
-version = "1.1.1"
+version = "1.2.0"
 authors = [
 	"Evan Cameron <cameron.evan@gmail.com>",
 	"Takeru Ohta <phjgt308@gmail.com>",
