@@ -9,7 +9,7 @@
 [Examples](#examples)
 [Benchmarks](#benchmarks)
 
-This library is a radix trie implementation (a trie with node compression on common prefixes) that is built to be both performant and optimize memory layout/padding to further reduce memory consumption, leading to **significant memory savings** and fast traversal time for large data sets.
+This library is a radix trie implementation (a trie with node compression on common prefixes) that is built to be both performant and optimize memory layout/padding to further reduce memory consumption, leading to **significant memory savings** and fast traversal time for large data sets. We use it in production for performance critical code.
 
 `fast_radix_trie` has a [benchmark suite](#benchmarks) run against std's HashMap/BTreeMap and other popular rust trie libraries, and `fast_radix_trie` uses **less memory than most while also being faster** or on par for insert/remove/retrieve operations.
 
@@ -260,3 +260,7 @@ domains trie remove comparison/(ours) RadixSet remove*
 domains trie remove comparison/radix_trie::Trie remove
                         time:   [1.7784 s 1.7912 s 1.8043 s]
 ```
+
+## LLM use
+
+This crate contains significant amounts of unsafe Rust code, it is a passion project that is used in production; lovingly crafted by hand and run through static analysis tools like miri. LLMs have been used for trying to find any other in safety issues during review, increasing test and documentation.
