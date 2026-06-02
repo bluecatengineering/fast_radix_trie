@@ -263,4 +263,4 @@ domains trie remove comparison/radix_trie::Trie remove
 
 ## LLM use
 
-This crate contains significant amounts of unsafe Rust code, it is a passion project that is used in production; lovingly crafted by hand and run through static analysis tools like miri. LLMs have been used for trying to find any other in safety issues during review, increasing test and documentation.
+This crate contains significant amounts of unsafe Rust code, as such, it was written by hand and run through static analysis tools like miri. LLMs have been used for review, trying to find any other in safety issues, and non-critical sections like increasing test and documentation coverage.
