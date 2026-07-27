@@ -469,6 +469,43 @@ mod tests {
     }
 
     #[test]
+    fn split_by_prefix_keeps_root_label_empty() {
+        // splitting off "foo" leaves the root valueless with the single child
+        // "bar"; the root must not be merged into it, otherwise its label
+        // becomes "bar" and every operation that anchors keys at the root
+        // stops matching
+        let mut set: RadixSet = vec!["foo", "bar"].into_iter().collect();
+        let splitted_set = set.split_by_prefix("foo");
+        assert_eq!(splitted_set.iter().collect::<Vec<_>>(), [b"foo"]);
+
+        assert!(set.contains("bar"));
+        assert!(
+            set.remove("bar"),
+            "remove must see the same keys as contains"
+        );
+        assert!(set.is_empty());
+
+        // a second split must also still find the remaining key
+        let mut set: RadixSet = vec!["foo", "bar"].into_iter().collect();
+        set.split_by_prefix("foo");
+        let splitted_set = set.split_by_prefix("ba");
+        assert_eq!(splitted_set.iter().collect::<Vec<_>>(), [b"bar"]);
+        assert!(set.is_empty());
+
+        // with the root collapsed to "bar", removing the non-member key "bar"
+        // used to match the child spelling "barbar" and silently delete it
+        let mut set: RadixSet = vec!["foo", "barbar", "barqux"].into_iter().collect();
+        set.split_by_prefix("foo");
+        assert!(!set.contains("bar"));
+        assert!(
+            !set.remove("bar"),
+            "must not remove a key that is not in the set"
+        );
+        assert!(set.contains("barbar"));
+        assert!(set.contains("barqux"));
+    }
+
+    #[test]
     fn iter_prefix_works() {
         fn assert_iter_prefix(set: &RadixSet, prefix: &str) {
             let actual = set.iter_prefix(prefix.as_bytes()).collect::<Vec<_>>();

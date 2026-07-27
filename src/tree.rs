@@ -65,7 +65,7 @@ impl<V> RadixTrie<V> {
         self.root.get_mut(key)
     }
     pub fn split_by_prefix<K: ?Sized + BorrowedBytes>(&mut self, key: &K) -> Self {
-        match self.root.split_by_prefix(key) {
+        match self.root.split_by_prefix_keep_empty_root(key) {
             Some(node) => {
                 let new_root = Node::new(b"", [node], None);
                 let split = Self::from(new_root);

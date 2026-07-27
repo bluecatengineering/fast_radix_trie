@@ -360,6 +360,29 @@ impl<V> Node<V> {
 
     /// split the node by the prefix into two distinct nodes
     pub fn split_by_prefix<K: ?Sized + BorrowedBytes>(&mut self, key: &K) -> Option<Self> {
+        self.split_by_prefix_impl(key, core::ptr::null())
+    }
+
+    /// like [`Self::split_by_prefix`], but never merges the node this is
+    /// called on with a leftover single child
+    ///
+    /// Containers resolve keys starting at their root's (empty) label, so the
+    /// root absorbing a child's label would prepend it to every remaining key.
+    pub(crate) fn split_by_prefix_keep_empty_root<K: ?Sized + BorrowedBytes>(
+        &mut self,
+        key: &K,
+    ) -> Option<Self> {
+        let root: *const Node<V> = &raw const *self;
+        self.split_by_prefix_impl(key, root)
+    }
+
+    /// `root` is the node that must not be merged with a leftover single
+    /// child; pass null to allow the merge everywhere
+    fn split_by_prefix_impl<K: ?Sized + BorrowedBytes>(
+        &mut self,
+        key: &K,
+        root: *const Node<V>,
+    ) -> Option<Self> {
         let mut cur = self;
         let key = key.as_bytes();
         let mut suffix = key;
@@ -391,6 +414,13 @@ impl<V> Node<V> {
         // - `parent` points to a valid Node<V> that was obtained from `&raw mut *cur` earlier
         // - The pointer remains valid because we haven't moved or deallocated the node
         // - We have exclusive access through the original `&mut self` parameter
+        //
+        // `parent` lags one node behind `cur`, so it still points at the node this method
+        // was called on when the detached child hangs directly off of it. When the caller
+        // designated that node as `root`, it must not be merged with a leftover single
+        // child below: keys are resolved starting at the root's label, so absorbing the
+        // child's label into the root would prepend it to every remaining key
+        let parent_is_root = core::ptr::eq(parent, root);
         let parent = unsafe { &mut *parent };
 
         // SAFETY: using `cur` after mutating parent can cause UB
@@ -425,7 +455,9 @@ impl<V> Node<V> {
             // - The child at child_index is the one we've been working with
             unsafe {
                 let detached = parent.remove_child(child_index);
-                parent.try_merge_child();
+                if !parent_is_root {
+                    parent.try_merge_child();
+                }
                 Some(detached)
             }
         } else if suffix.is_empty() {
@@ -434,7 +466,9 @@ impl<V> Node<V> {
             // - `remove_child(child_index)` is safe because child_index is a valid index
             let mut detached = unsafe { parent.remove_child(child_index) };
             detached.replace_label(key);
-            parent.try_merge_child();
+            if !parent_is_root {
+                parent.try_merge_child();
+            }
             Some(detached)
         } else {
             // if suffix > child.label_len then we didn't descend far enough?
@@ -2470,6 +2504,50 @@ mod tests {
         let mut root = create_bigger_test_tree();
         let other = root.split_by_prefix("xyx");
         assert_eq!(other, None);
+    }
+
+    #[test]
+    fn test_split_by_prefix_keep_empty_root_does_not_collapse_root() {
+        // when the split leaves the root valueless with a single child, the
+        // root must not be merged into that child: keys are resolved starting
+        // at the root's label, so absorbing the child's label would prepend it
+        // to every remaining key
+        let mut root = Node::root();
+        root.insert("foo", 1);
+        root.insert("bar", 2);
+
+        let detached = root.split_by_prefix_keep_empty_root("foo").unwrap();
+        assert_eq!(detached.label(), b"foo");
+        assert_eq!(detached.value(), Some(&1));
+
+        assert_eq!(root.label(), b"");
+        assert_eq!(root.get("bar"), Some(&2));
+        assert_eq!(root.remove("bar"), Some(2));
+
+        // same, but the detached node keeps a subtree
+        let mut root = Node::root();
+        root.insert("foo", 1);
+        root.insert("foobar", 2);
+        root.insert("qux", 3);
+
+        let detached = root.split_by_prefix_keep_empty_root("foo").unwrap();
+        assert_eq!(detached.label(), b"foo");
+        assert_eq!(root.label(), b"");
+        assert_eq!(root.remove("qux"), Some(3));
+    }
+
+    #[test]
+    fn test_split_by_prefix_merges_root_with_single_child() {
+        // the public API keeps its historical behavior: the node split_by_prefix
+        // is called on may absorb a leftover single child
+        let mut root = Node::root();
+        root.insert("foo", 1);
+        root.insert("bar", 2);
+
+        let detached = root.split_by_prefix("foo").unwrap();
+        assert_eq!(detached.label(), b"foo");
+        assert_eq!(root.label(), b"bar");
+        assert_eq!(root.value(), Some(&2));
     }
 
     #[test]
