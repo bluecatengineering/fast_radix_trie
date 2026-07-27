@@ -376,8 +376,8 @@ impl<V> Node<V> {
         self.split_by_prefix_impl(key, root)
     }
 
-    /// `root` is the node that must not be merged with a leftover single
-    /// child; pass null to allow the merge everywhere
+    /// `root` is a pointer to the tree root; the root is not merged with a
+    /// single child even when empty.
     fn split_by_prefix_impl<K: ?Sized + BorrowedBytes>(
         &mut self,
         key: &K,
