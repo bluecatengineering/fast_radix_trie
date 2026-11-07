@@ -1381,8 +1381,6 @@ mod tests {
     use super::*;
     use crate::{RadixMap, RadixSet, StringRadixMap};
 
-
-
     #[test]
     fn root_works() {
         let node = Node::<()>::root();
