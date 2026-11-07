@@ -574,29 +574,27 @@ impl<V> Node<V> {
         let child = unsafe { self.children_mut().get_unchecked_mut(i) };
 
         let remaining = crate::strip_prefix(key, child.label())?;
-        if remaining.is_empty() {
-            // no remaining suffix left (child == parent), so remove
-            let val = child.take_value();
-            if child.children().is_empty() {
-                // the child is a leaf so remove
-                // Safety:
-                // - `i` is a valid index (we got it from `child_index_with_first`)
-                // - `remove_child(i)` is safe because i < children_len()
-                unsafe {
-                    self.remove_child(i);
-                }
-            } else {
-                // there are children, call try_merge
-                child.try_merge_child();
-            }
-
-            val
+        let val = if remaining.is_empty() {
+            child.take_value()?
         } else {
-            // go deeper, recursively call remove on child with remaining
-            let val = child.remove(remaining);
+            child.remove(remaining)?
+        };
+
+        // Removing a descendant can leave this child empty too, especially
+        // when a long key spans multiple MAX_LABEL_LEN-sized nodes. Prune it
+        // while unwinding instead of leaving a valueless leaf attached.
+        if child.value().is_none() && child.children().is_empty() {
+            // Safety:
+            // - `i` came from `child_index_with_first` and is still in bounds:
+            //   only the child's subtree has changed, not our children array.
+            // - `child` is not used after `remove_child` may reallocate it.
+            unsafe {
+                self.remove_child(i);
+            }
+        } else {
             child.try_merge_child();
-            val
         }
+        Some(val)
     }
 
     /// merge child if we only have one child
@@ -1856,6 +1854,9 @@ mod tests {
         assert_eq!(node.remove(&a[..]), Some(1));
         assert_eq!(node.get(&a[..]), None);
         assert_eq!(node.get(&b[..]), Some(&2));
+        assert_no_empty_descendants(&node);
+        assert_eq!(node.remove(&b[..]), Some(2));
+        assert_eq!(node, Node::root());
     }
 
     // Two long labels that share a long common prefix (>255 bytes) before diverging.
@@ -1875,6 +1876,9 @@ mod tests {
         assert_eq!(node.remove(&a[..]), Some(1));
         assert_eq!(node.get(&a[..]), None);
         assert_eq!(node.get(&b[..]), Some(&2));
+        assert_no_empty_descendants(&node);
+        assert_eq!(node.remove(&b[..]), Some(2));
+        assert_eq!(node, Node::root());
     }
 
     // Replace the value of an existing long-label key.
@@ -1891,36 +1895,148 @@ mod tests {
     // Insert a short key that is a prefix of a long key, and vice versa.
     #[test]
     fn test_short_prefix_of_long_label() {
-        let mut node = Node::root();
         let short = [b'p'; 10];
         let mut long = [b'p'; 10].to_vec();
         long.extend(b"q".repeat(300));
-
-        node.insert(&short[..], 1);
-        node.insert(&long[..], 2);
-        assert_eq!(node.get(&short[..]), Some(&1));
-        assert_eq!(node.get(&long[..]), Some(&2));
-
-        // inserting another long sibling under the same short prefix
         let mut long2 = [b'p'; 10].to_vec();
         long2.extend(b"r".repeat(300));
-        node.insert(&long2[..], 3);
-        assert_eq!(node.get(&long2[..]), Some(&3));
-        assert_eq!(node.get(&short[..]), Some(&1));
-        assert_eq!(node.get(&long[..]), Some(&2));
-        dbg!(&node);
+
+        for remove_short_first in [false, true] {
+            let mut node = Node::root();
+            node.insert(&short[..], 1);
+            node.insert(&long[..], 2);
+            node.insert(&long2[..], 3);
+            assert_eq!(node.get(&short[..]), Some(&1));
+            assert_eq!(node.get(&long[..]), Some(&2));
+            assert_eq!(node.get(&long2[..]), Some(&3));
+
+            let short_entry = (&short[..], 1);
+            let long_entry = (&long[..], 2);
+            let (first, second) = if remove_short_first {
+                (short_entry, long_entry)
+            } else {
+                (long_entry, short_entry)
+            };
+            assert_eq!(node.remove(first.0), Some(first.1));
+            assert_eq!(node.get(first.0), None);
+            assert_eq!(node.get(second.0), Some(&second.1));
+            assert_eq!(node.get(&long2[..]), Some(&3));
+            assert_no_empty_descendants(&node);
+
+            assert_eq!(node.remove(second.0), Some(second.1));
+            assert_eq!(node.get(&long2[..]), Some(&3));
+            assert_no_empty_descendants(&node);
+            assert_eq!(node.remove(&long2[..]), Some(3));
+            assert_eq!(node, Node::root());
+        }
     }
 
-    // Three-chunk chain: label length > 2 * MAX_LABEL_LEN (>510 bytes).
+    // Deletion must prune every empty ancestor, including chains spanning many labels.
     #[test]
-    fn test_triple_chunk_long_label() {
+    fn test_remove_long_label_prunes_empty_ancestors() {
+        for length in [254, 255, 256, 510, 511, 512, 700, 765, 4096] {
+            let mut node = Node::root();
+            let label = vec![b'k'; length];
+            // Reuse the same root to check that it remains usable after pruning.
+            for value in [42, 43] {
+                assert_eq!(node.insert(&label[..], value), None);
+                assert_eq!(node.get(&label[..]), Some(&value));
+                assert_eq!(node.remove(&label[..]), Some(value));
+                assert_eq!(node.get(&label[..]), None);
+                assert_eq!(node, Node::root(), "key length {length}");
+            }
+        }
+    }
+
+    #[test]
+    fn test_remove_missing_long_label_leaves_tree_unchanged() {
+        let long = [b'a'; 512];
+        let mut missing = long;
+        missing[511] = b'b';
         let mut node = Node::root();
-        let label = [b'k'; 700];
-        node.insert(&label[..], 42);
-        assert_eq!(node.get(&label[..]), Some(&42));
-        assert_eq!(node.remove(&label[..]), Some(42));
-        assert_eq!(node.get(&label[..]), None);
-        dbg!(&node);
+        node.insert(&long[..], 1);
+        node.insert("a", 2);
+        let before = node.clone();
+
+        // Cover a mismatched label, a partial label, and exact valueless nodes.
+        for key in [&missing[..], &long[..256], &long[..255], &long[..510]] {
+            assert_eq!(node.remove(key), None);
+            assert_eq!(node, before);
+        }
+    }
+
+    #[test]
+    fn test_remove_abandoned_entry_leaves_tree_unchanged() {
+        let long = [b'a'; 512];
+        let mut node = Node::root();
+        // Vacant entry creation materializes a path without storing a value.
+        let _ = node.entry(&long[..]);
+        let before = node.clone();
+        assert_eq!(node.remove(&long[..]), None);
+        assert_eq!(node, before);
+
+        node.entry(&long[..]).or_insert(1);
+        assert_eq!(node.remove(&long[..]), Some(1));
+        assert_eq!(node, Node::root());
+    }
+
+    #[test]
+    fn test_remove_long_label_preserves_value_ownership() {
+        use std::{cell::Cell, rc::Rc};
+
+        struct Value(Rc<Cell<usize>>);
+        impl Drop for Value {
+            fn drop(&mut self) {
+                self.0.set(self.0.get() + 1);
+            }
+        }
+
+        let drops = Rc::new(Cell::new(0));
+        let long = [b'a'; 512];
+        let mut node = Node::root();
+        for key in [b"".as_slice(), b"a", b"b", &long[..]] {
+            node.insert(key, Value(drops.clone()));
+        }
+
+        let removed = node.remove(&long[..]).unwrap();
+        assert_eq!(drops.get(), 0);
+        drop(removed);
+        assert_eq!(drops.get(), 1);
+        drop(node.remove("a").unwrap());
+        assert_eq!(drops.get(), 2);
+        // Root and sibling values are still owned by the trie.
+        drop(node);
+        assert_eq!(drops.get(), 4);
+    }
+
+    #[test]
+    fn test_long_label_churn_does_not_retain_empty_paths() {
+        let pool: Vec<_> = (0..128)
+            .map(|id| format!("{id:03}/{}", "a".repeat(256 + id * 2)))
+            .collect();
+        let mut node = Node::root();
+        for round in 0..16 {
+            for batch in pool.chunks(8) {
+                for key in batch {
+                    assert_eq!(node.insert(key.as_str(), round), None);
+                }
+                for key in batch {
+                    assert_eq!(node.remove(key.as_str()), Some(round));
+                    assert_no_empty_descendants(&node);
+                }
+                assert_eq!(node, Node::root());
+            }
+        }
+    }
+
+    fn assert_no_empty_descendants<V>(root: &Node<V>) {
+        assert!(root.label().is_empty());
+        for (depth, node) in root.iter() {
+            assert!(
+                depth == 0 || node.value().is_some() || !node.children().is_empty(),
+                "valueless leaf at depth {depth}"
+            );
+        }
     }
 
     // entry() API with a long-label key that needs chaining.
